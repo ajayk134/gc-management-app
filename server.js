@@ -106,7 +106,7 @@ mongoose.connect(MONGODB_URI, {
   if (!adminExists) {
     const bcrypt = require('bcryptjs');
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@gcmanagement.com';
+    const adminEmail = process.env.ADMIN_EMAIL || 'sathvikak2002@gmail.com';
     const adminName = process.env.ADMIN_NAME || 'Administrator';
     
     await User.create({
