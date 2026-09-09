@@ -1,0 +1,288 @@
+const express = require('express');
+const GCRecord = require('../models/GCRecord');
+const { auth, adminOnly, userOnly } = require('../middleware/auth');
+const { logAction } = require('../utils/audit');
+
+const router = express.Router();
+
+router.use(auth);
+
+// Get GC records (admin sees all, user sees own)
+router.get('/', async (req, res) => {
+  try {
+    const { search, status, startDate, endDate, sort, order, page = 1, limit = 50, userId } = req.query;
+    
+    const filter = {};
+    
+    if (req.user.role === 'user') {
+      filter.user = req.userId;
+    } else if (userId) {
+      filter.user = userId;
+    }
+
+    if (status) {
+      filter.paymentStatus = status;
+    }
+
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate + 'T23:59:59.999Z');
+    }
+
+    if (search) {
+      filter.$or = [
+        { giftCard: { $regex: search, $options: 'i' } },
+        { notes: { $regex: search, $options: 'i' } },
+        { adminNote: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const sortField = sort || 'createdAt';
+    const sortOrder = order === 'asc' ? 1 : -1;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [records, total] = await Promise.all([
+      GCRecord.find(filter)
+        .populate('user', 'name email')
+        .sort({ [sortField]: sortOrder })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      GCRecord.countDocuments(filter)
+    ]);
+
+    res.json({
+      records,
+      pagination: {
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+        limit: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get records error:', error);
+    res.status(500).json({ error: 'Failed to fetch records' });
+  }
+});
+
+// Get single record
+router.get('/:id', async (req, res) => {
+  try {
+    const record = await GCRecord.findById(req.params.id).populate('user', 'name email');
+    
+    if (!record) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    if (req.user.role === 'user' && record.user._id.toString() !== req.userId.toString()) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json({ record });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch record' });
+  }
+});
+
+// Create record (user or admin)
+router.post('/', async (req, res) => {
+  try {
+    const { giftCard, giftCardPin, giftCardAmount, paid, notes } = req.body;
+    
+    if (!giftCard || !giftCardPin || giftCardAmount === undefined || paid === undefined) {
+      return res.status(400).json({ error: 'Gift Card, PIN, Amount, and Paid are required' });
+    }
+
+    if (giftCardAmount < 0 || paid < 0) {
+      return res.status(400).json({ error: 'Amounts must be non-negative' });
+    }
+
+    const userId = req.user.role === 'admin' ? (req.body.userId || req.userId) : req.userId;
+
+    const record = await GCRecord.create({
+      user: userId,
+      giftCard: giftCard.trim(),
+      giftCardPin: giftCardPin.trim(),
+      giftCardAmount: parseFloat(giftCardAmount),
+      paid: parseFloat(paid),
+      notes: notes || ''
+    });
+
+    await record.populate('user', 'name email');
+
+    await logAction('record_created', req.userId, 'record', record._id, {
+      giftCard: record.giftCard,
+      amount: record.giftCardAmount,
+      userId: userId
+    }, req.ip);
+
+    res.status(201).json({ record });
+  } catch (error) {
+    console.error('Create record error:', error);
+    res.status(500).json({ error: 'Failed to create record' });
+  }
+});
+
+// Update record
+router.put('/:id', async (req, res) => {
+  try {
+    const record = await GCRecord.findById(req.params.id);
+    
+    if (!record) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    if (req.user.role === 'user' && record.user.toString() !== req.userId.toString()) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { giftCard, giftCardPin, giftCardAmount, paid, notes, adminNote } = req.body;
+
+    if (giftCard !== undefined) record.giftCard = giftCard.trim();
+    if (giftCardPin !== undefined) record.giftCardPin = giftCardPin.trim();
+    if (giftCardAmount !== undefined) record.giftCardAmount = parseFloat(giftCardAmount);
+    if (paid !== undefined) record.paid = parseFloat(paid);
+    if (notes !== undefined) record.notes = notes;
+    if (adminNote !== undefined && req.user.role === 'admin') record.adminNote = adminNote;
+
+    await record.save();
+    await record.populate('user', 'name email');
+
+    await logAction('record_edited', req.userId, 'record', record._id, { changes: req.body }, req.ip);
+
+    res.json({ record });
+  } catch (error) {
+    console.error('Update record error:', error);
+    res.status(500).json({ error: 'Failed to update record' });
+  }
+});
+
+// Delete record
+router.delete('/:id', async (req, res) => {
+  try {
+    const record = await GCRecord.findById(req.params.id);
+    
+    if (!record) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    if (req.user.role === 'user' && record.user.toString() !== req.userId.toString()) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    await GCRecord.findByIdAndDelete(record._id);
+
+    await logAction('record_deleted', req.userId, 'record', record._id, {
+      giftCard: record.giftCard,
+      amount: record.giftCardAmount
+    }, req.ip);
+
+    res.json({ message: 'Record deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete record' });
+  }
+});
+
+// Mark as paid back (admin only)
+router.post('/:id/pay', adminOnly, async (req, res) => {
+  try {
+    const { adminNote } = req.body;
+    const record = await GCRecord.findById(req.params.id);
+    
+    if (!record) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    record.paymentStatus = 'paid_back';
+    record.paidBackAt = new Date();
+    if (adminNote) record.adminNote = adminNote;
+
+    await record.save();
+    await record.populate('user', 'name email');
+
+    await logAction('record_paid_back', req.userId, 'record', record._id, {
+      giftCard: record.giftCard,
+      amount: record.paid,
+      userName: record.user.name
+    }, req.ip);
+
+    res.json({ record });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to mark as paid back' });
+  }
+});
+
+// Bulk pay back (admin only)
+router.post('/bulk-pay', adminOnly, async (req, res) => {
+  try {
+    const { recordIds, adminNote } = req.body;
+    
+    if (!recordIds || !Array.isArray(recordIds) || recordIds.length === 0) {
+      return res.status(400).json({ error: 'Record IDs are required' });
+    }
+
+    const results = { success: [], failed: [] };
+
+    for (const id of recordIds) {
+      try {
+        const record = await GCRecord.findById(id);
+        if (!record) {
+          results.failed.push({ id, error: 'Not found' });
+          continue;
+        }
+
+        record.paymentStatus = 'paid_back';
+        record.paidBackAt = new Date();
+        if (adminNote) record.adminNote = adminNote;
+        await record.save();
+
+        results.success.push(id);
+      } catch (err) {
+        results.failed.push({ id, error: err.message });
+      }
+    }
+
+    if (results.success.length > 0) {
+      await logAction('bulk_paid_back', req.userId, 'record', results.success[0], {
+        count: results.success.length,
+        failedCount: results.failed.length,
+        recordIds: results.success
+      }, req.ip);
+    }
+
+    res.json({
+      message: `${results.success.length} records marked as paid back`,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Bulk pay failed' });
+  }
+});
+
+// Undo payment status (admin only)
+router.post('/:id/undo-pay', adminOnly, async (req, res) => {
+  try {
+    const record = await GCRecord.findById(req.params.id);
+    
+    if (!record) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    record.paymentStatus = 'pending';
+    record.paidBackAt = null;
+    await record.save();
+    await record.populate('user', 'name email');
+
+    await logAction('record_edited', req.userId, 'record', record._id, {
+      action: 'undo_paid_back',
+      giftCard: record.giftCard
+    }, req.ip);
+
+    res.json({ record });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to undo payment status' });
+  }
+});
+
+module.exports = router;
