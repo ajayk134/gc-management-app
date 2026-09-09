@@ -16,6 +16,11 @@ const exportRoutes = require('./routes/export');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust the Render proxy so rate limiting works correctly behind it
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
