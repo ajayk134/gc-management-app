@@ -21,9 +21,9 @@ export default function AdminDashboard() {
           <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Audit</button>
         </div>
         <div className="header-right">
-          <ThemeToggle />
           <span className="header-user">{user.name}</span>
           <span className="header-role role-admin">Admin</span>
+          <ThemeToggle />
           <button className="btn-logout" onClick={logout}>Logout</button>
         </div>
       </header>

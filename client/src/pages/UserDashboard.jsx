@@ -123,9 +123,9 @@ export default function UserDashboard() {
           <span className="header-logo">GC Manager</span>
         </div>
         <div className="header-right">
-          <ThemeToggle />
           <span className="header-user">{user.name}</span>
           <span className="header-role role-user">User</span>
+          <ThemeToggle />
           <button className="btn-logout" onClick={logout}>Logout</button>
         </div>
       </header>
