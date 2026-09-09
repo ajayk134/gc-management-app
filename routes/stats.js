@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
 const { auth, adminOnly, userOnly } = require('../middleware/auth');
@@ -6,6 +7,14 @@ const { auth, adminOnly, userOnly } = require('../middleware/auth');
 const router = express.Router();
 
 router.use(auth);
+
+function toObjectId(id) {
+  if (!id) return null;
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    return new mongoose.Types.ObjectId(id);
+  }
+  return null;
+}
 
 // User stats (for user portal)
 router.get('/user', userOnly, async (req, res) => {
@@ -47,7 +56,13 @@ router.get('/admin', adminOnly, async (req, res) => {
     const { userId, startDate, endDate } = req.query;
     
     const matchFilter = {};
-    if (userId) matchFilter.user = userId;
+    if (userId) {
+      const uid = toObjectId(userId);
+      if (!uid) {
+        return res.status(400).json({ error: 'Invalid userId' });
+      }
+      matchFilter.user = uid;
+    }
     if (startDate || endDate) {
       matchFilter.createdAt = {};
       if (startDate) matchFilter.createdAt.$gte = new Date(startDate);

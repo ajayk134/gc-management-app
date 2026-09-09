@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
@@ -42,19 +42,24 @@ function AdminStats() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [users, setUsers] = useState([]);
+  const requestIdRef = useRef(0);
 
   const fetchStats = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
     try {
       const params = new URLSearchParams();
       if (userFilter) params.set('userId', userFilter);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
       const data = await api.get(`/api/stats/admin?${params}`);
+      if (requestId !== requestIdRef.current) return;
       setStats(data);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       toast.error('Failed to load stats');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [userFilter, startDate, endDate]);
 

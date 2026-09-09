@@ -33,14 +33,14 @@ app.use((req, res, next) => {
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: Number(process.env.RATE_LIMIT_MAX || 200),
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/api/', limiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 20),
   message: { error: 'Too many login attempts, please try again later.' }
 });
 

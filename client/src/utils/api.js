@@ -30,10 +30,12 @@ class ApiClient {
     const data = isFormData ? await response.blob() : await response.json();
 
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && !path.startsWith('/api/auth/login')) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        window.location.href = '/login';
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
       }
       throw new Error(data.error || 'Request failed');
     }
