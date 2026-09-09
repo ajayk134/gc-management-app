@@ -25,10 +25,8 @@
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.21.1",
-    "xlsx": "^0.18.5"
-  },
-  "devDependencies": {
+    "vite": "^5.0.10",
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.10"
+    "xlsx": "^0.18.5"
   }
 }
