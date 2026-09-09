@@ -55,5 +55,6 @@ gcRecordSchema.index({ paymentStatus: 1 });
 gcRecordSchema.index({ createdAt: -1 });
 gcRecordSchema.index({ user: 1, paymentStatus: 1 });
 gcRecordSchema.index({ user: 1, createdAt: -1 });
+gcRecordSchema.index({ user: 1, giftCard: 1, giftCardPin: 1 }, { unique: true });
 
 module.exports = mongoose.model('GCRecord', gcRecordSchema);

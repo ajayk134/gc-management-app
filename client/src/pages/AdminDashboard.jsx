@@ -237,6 +237,7 @@ function AdminRecords() {
   const [formData, setFormData] = useState({
     giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: ''
   });
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     api.get('/api/users').then(d => setUsers(d.users)).catch(() => {});
@@ -269,6 +270,7 @@ function AdminRecords() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
     try {
       const body = {
         ...formData,
@@ -285,9 +287,14 @@ function AdminRecords() {
       setShowForm(false);
       setEditingRecord(null);
       setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: '' });
+      setFormError('');
       fetchRecords();
     } catch (err) {
-      toast.error(err.message);
+      if (err.message && err.message.includes('already been submitted')) {
+        setFormError(err.message);
+      } else {
+        toast.error(err.message);
+      }
     }
   };
 
@@ -301,6 +308,7 @@ function AdminRecords() {
       notes: record.notes || '',
       userId: record.user?._id || ''
     });
+    setFormError('');
     setShowForm(true);
   };
 
@@ -394,7 +402,7 @@ function AdminRecords() {
       <div className="section-header">
         <h2 className="section-title">All GC Records</h2>
         <div className="section-actions">
-          <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: users[0]?._id || '' }); setShowForm(true); }}>+ Add Record</button>
+          <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: users[0]?._id || '' }); setFormError(''); setShowForm(true); }}>+ Add Record</button>
           <button className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
           <button className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
         </div>
@@ -548,14 +556,20 @@ function AdminRecords() {
       </div>
 
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div className="modal-overlay" onClick={() => { setShowForm(false); setFormError(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingRecord ? 'Edit Record' : 'Add Record'}</h3>
-              <button className="btn-icon" onClick={() => setShowForm(false)}>&times;</button>
+              <button className="btn-icon" onClick={() => { setShowForm(false); setFormError(''); }}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
+                {formError && (
+                  <div className="form-error-banner">
+                    <span className="form-error-icon">!</span>
+                    <span>{formError}</span>
+                  </div>
+                )}
                 {!editingRecord && (
                   <div className="form-group">
                     <label className="form-label">Assign to User *</label>

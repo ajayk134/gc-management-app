@@ -116,10 +116,26 @@ router.post('/', async (req, res) => {
 
     const userId = req.user.role === 'admin' ? (req.body.userId || req.userId) : req.userId;
 
+    const trimmedCard = giftCard.trim();
+    const trimmedPin = giftCardPin.trim();
+
+    const existing = await GCRecord.findOne({
+      user: userId,
+      giftCard: trimmedCard,
+      giftCardPin: trimmedPin
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        error: 'This Gift Card and PIN combination has already been submitted.',
+        code: 'DUPLICATE_GC_PIN'
+      });
+    }
+
     const record = await GCRecord.create({
       user: userId,
-      giftCard: giftCard.trim(),
-      giftCardPin: giftCardPin.trim(),
+      giftCard: trimmedCard,
+      giftCardPin: trimmedPin,
       giftCardAmount: amountVal,
       paid: paidVal,
       notes: notes || ''
@@ -135,6 +151,12 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({ record });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        error: 'This Gift Card and PIN combination has already been submitted.',
+        code: 'DUPLICATE_GC_PIN'
+      });
+    }
     console.error('Create record error:', error);
     res.status(500).json({ error: 'Failed to create record' });
   }
@@ -155,8 +177,29 @@ router.put('/:id', async (req, res) => {
 
     const { giftCard, giftCardPin, giftCardAmount, paid, notes, adminNote } = req.body;
 
-    if (giftCard !== undefined) record.giftCard = giftCard.trim();
-    if (giftCardPin !== undefined) record.giftCardPin = giftCardPin.trim();
+    const finalGiftCard = giftCard !== undefined ? giftCard.trim() : record.giftCard;
+    const finalGiftCardPin = giftCardPin !== undefined ? giftCardPin.trim() : record.giftCardPin;
+
+    const cardChanged = giftCard !== undefined || giftCardPin !== undefined;
+
+    if (cardChanged) {
+      const existing = await GCRecord.findOne({
+        _id: { $ne: record._id },
+        user: record.user,
+        giftCard: finalGiftCard,
+        giftCardPin: finalGiftCardPin
+      });
+
+      if (existing) {
+        return res.status(409).json({
+          error: 'This Gift Card and PIN combination has already been submitted.',
+          code: 'DUPLICATE_GC_PIN'
+        });
+      }
+    }
+
+    if (giftCard !== undefined) record.giftCard = finalGiftCard;
+    if (giftCardPin !== undefined) record.giftCardPin = finalGiftCardPin;
 
     const finalAmount = giftCardAmount !== undefined ? parseFloat(giftCardAmount) : record.giftCardAmount;
     const finalPaid = paid !== undefined ? parseFloat(paid) : record.paid;
@@ -178,6 +221,12 @@ router.put('/:id', async (req, res) => {
 
     res.json({ record });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        error: 'This Gift Card and PIN combination has already been submitted.',
+        code: 'DUPLICATE_GC_PIN'
+      });
+    }
     console.error('Update record error:', error);
     res.status(500).json({ error: 'Failed to update record' });
   }

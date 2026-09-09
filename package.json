@@ -12,6 +12,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
@@ -26,7 +27,9 @@
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.21.1",
     "vite": "^5.0.10",
-    "@vitejs/plugin-react": "^4.2.1",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

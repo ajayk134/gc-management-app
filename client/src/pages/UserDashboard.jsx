@@ -20,6 +20,7 @@ export default function UserDashboard() {
   const [formData, setFormData] = useState({
     giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: ''
   });
+  const [formError, setFormError] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -50,6 +51,7 @@ export default function UserDashboard() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
     try {
       const body = {
         ...formData,
@@ -68,9 +70,14 @@ export default function UserDashboard() {
       setShowForm(false);
       setEditingRecord(null);
       setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' });
+      setFormError('');
       fetchData();
     } catch (err) {
-      toast.error(err.message);
+      if (err.message && err.message.includes('already been submitted')) {
+        setFormError(err.message);
+      } else {
+        toast.error(err.message);
+      }
     }
   };
 
@@ -83,6 +90,7 @@ export default function UserDashboard() {
       paid: record.paid,
       notes: record.notes || ''
     });
+    setFormError('');
     setShowForm(true);
   };
 
@@ -153,7 +161,7 @@ export default function UserDashboard() {
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">My Gift Cards</h2>
-            <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' }); setShowForm(true); }}>
+            <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' }); setFormError(''); setShowForm(true); }}>
               + Add Record
             </button>
           </div>
@@ -264,14 +272,20 @@ export default function UserDashboard() {
       </div>
 
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+        <div className="modal-overlay" onClick={() => { setShowForm(false); setFormError(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingRecord ? 'Edit Record' : 'Add Gift Card Record'}</h3>
-              <button className="btn-icon" onClick={() => setShowForm(false)}>&times;</button>
+              <button className="btn-icon" onClick={() => { setShowForm(false); setFormError(''); }}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
+                {formError && (
+                  <div className="form-error-banner">
+                    <span className="form-error-icon">!</span>
+                    <span>{formError}</span>
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Gift Card *</label>
                   <input type="text" className="form-input" value={formData.giftCard} onChange={e => setFormData({...formData, giftCard: e.target.value})} required />
