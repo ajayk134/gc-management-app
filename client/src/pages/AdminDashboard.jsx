@@ -37,6 +37,29 @@ export default function AdminDashboard() {
   );
 }
 
+function ConfirmModal({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, onCancel, loading = false, danger = false }) {
+  if (!open) return null;
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">{title}</h3>
+          <button className="btn-icon" onClick={onCancel} aria-label="Close">&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="confirm-dialog-text">{message}</div>
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-outline" onClick={onCancel} disabled={loading}>{cancelLabel}</button>
+          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm} disabled={loading}>
+            {loading ? 'Please wait...' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminStats() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -360,6 +383,39 @@ function AdminRecords() {
     }
   };
 
+  const [pendingBulkUndo, setPendingBulkUndo] = useState(false);
+  const [bulkUndoing, setBulkUndoing] = useState(false);
+
+  const handleBulkUndo = () => {
+    if (selected.size === 0) return toast.error('Select records first');
+    setPendingBulkUndo(true);
+  };
+
+  const confirmBulkUndo = async () => {
+    if (selected.size === 0) {
+      setPendingBulkUndo(false);
+      return toast.error('Select records first');
+    }
+    setBulkUndoing(true);
+    try {
+      const result = await api.post('/api/gc-records/bulk-undo-pay', { recordIds: [...selected] });
+      const results = result.results || {};
+      const successCount = Array.isArray(results.success) ? results.success.length : 0;
+      const skippedCount = Array.isArray(results.skipped) ? results.skipped.length : 0;
+      const failedCount = Array.isArray(results.failed) ? results.failed.length : 0;
+      toast.success(result.message || `${successCount} record(s) reverted to pending`);
+      if (skippedCount > 0) toast(`${skippedCount} skipped (not paid back)`);
+      if (failedCount > 0) toast.error(`${failedCount} failed to undo`);
+      setSelected(new Set());
+      fetchRecords();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBulkUndoing(false);
+      setPendingBulkUndo(false);
+    }
+  };
+
   const toggleSelect = (id) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -415,6 +471,7 @@ function AdminRecords() {
           <span>{selected.size} record(s) selected</span>
           <div className="bulk-action-buttons">
             <button className="btn btn-success btn-sm" onClick={handleBulkPay}>Mark Selected as Paid Back</button>
+            <button className="btn btn-outline btn-sm" onClick={handleBulkUndo}>Undo Selected</button>
             <button className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())}>Clear Selection</button>
           </div>
         </div>
@@ -612,6 +669,16 @@ function AdminRecords() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={pendingBulkUndo}
+        title="Undo payment status"
+        message={`Undo payment status for ${selected.size} selected record(s)? Paid Back records will be reverted to Pending and their Paid Back date will be cleared. Records that are already Pending will be skipped unchanged.`}
+        confirmLabel="Undo"
+        onConfirm={confirmBulkUndo}
+        onCancel={() => setPendingBulkUndo(false)}
+        loading={bulkUndoing}
+      />
     </div>
   );
 }
@@ -808,6 +875,10 @@ function AdminAudit() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [actionFilter, setActionFilter] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -819,6 +890,7 @@ function AdminAudit() {
       const data = await api.get(`/api/audit?${params}`);
       setLogs(data.logs);
       setPagination(data.pagination);
+      setSelected(new Set());
     } catch (err) {
       toast.error('Failed to load audit logs');
     } finally {
@@ -827,6 +899,61 @@ function AdminAudit() {
   }, [page, actionFilter]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === logs.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(logs.map(l => l._id)));
+    }
+  };
+
+  const handleDeleteOne = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/audit/${pendingDelete._id}`);
+      toast.success('Audit log deleted');
+      setPendingDelete(null);
+      fetchLogs();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selected.size === 0) return toast.error('Select audit logs first');
+    setPendingBulkDelete(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (selected.size === 0) {
+      setPendingBulkDelete(false);
+      return toast.error('Select audit logs first');
+    }
+    setDeleting(true);
+    try {
+      const result = await api.post('/api/audit/bulk-delete', { ids: [...selected] });
+      toast.success(result.message || `${result.deletedCount} audit log(s) deleted`);
+      setPendingBulkDelete(false);
+      fetchLogs();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const actionLabels = {
     user_created: 'User Created', user_edited: 'User Edited', user_deleted: 'User Deleted',
@@ -863,9 +990,24 @@ function AdminAudit() {
 
   if (loading) return <div className="loading"><div className="spinner"></div></div>;
 
+  const allSelected = logs.length > 0 && selected.size === logs.length;
+
   return (
     <div>
-      <h2 className="section-title">Audit History</h2>
+      <div className="section-header">
+        <h2 className="section-title">Audit History</h2>
+      </div>
+
+      {selected.size > 0 && (
+        <div className="bulk-action-bar">
+          <span>{selected.size} audit log(s) selected</span>
+          <div className="bulk-action-buttons">
+            <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={deleting}>Delete Selected</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())} disabled={deleting}>Clear Selection</button>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div className="filter-bar">
           <select className="form-select" value={actionFilter} onChange={e => { setActionFilter(e.target.value); setPage(1); }}>
@@ -878,16 +1020,27 @@ function AdminAudit() {
           <table className="table table-compact audit-table">
             <thead>
               <tr>
+                <th style={{ width: '36px' }}>
+                  <input
+                    type="checkbox"
+                    ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < logs.length; }}
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all audit logs"
+                  />
+                </th>
                 <th>Date / Time</th>
                 <th>Action</th>
                 <th>User</th>
                 <th>Target</th>
                 <th>Details</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {logs.map(log => (
-                <tr key={log._id}>
+                <tr key={log._id} className={selected.has(log._id) ? 'selected-row' : ''}>
+                  <td><input type="checkbox" checked={selected.has(log._id)} onChange={() => toggleSelect(log._id)} aria-label={`Select ${actionLabels[log.action] || log.action} log`} /></td>
                   <td className="text-nowrap">{formatDateTime(log.createdAt)}</td>
                   <td><span className={`badge ${actionBadgeClass(log.action)}`}>{actionLabels[log.action] || log.action}</span></td>
                   <td>{log.performedBy?.name || 'System'}</td>
@@ -895,21 +1048,45 @@ function AdminAudit() {
                   <td className="text-muted text-xs audit-details-cell">
                     <span>{formatDetails(log.metadata)}</span>
                   </td>
+                  <td>
+                    <div className="action-buttons">
+                      <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(log)} disabled={deleting}>Delete</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {logs.length === 0 && (
-                <tr><td colSpan="5" className="text-center text-muted" style={{ padding: '2rem' }}>No audit logs found</td></tr>
+                <tr><td colSpan="7" className="text-center text-muted" style={{ padding: '2rem' }}>No audit logs found</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
         <div className="mobile-view">
+          {logs.length > 0 && (
+            <div className="mobile-select-all-row">
+              <label className="mobile-select-all-label">
+                <input
+                  type="checkbox"
+                  ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < logs.length; }}
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                />
+                <span>Select All</span>
+              </label>
+              {selected.size > 0 && (
+                <span className="mobile-selected-count">{selected.size} selected</span>
+              )}
+            </div>
+          )}
           {logs.map(log => (
-            <div key={log._id} className="mobile-audit-card">
+            <div key={log._id} className={`mobile-audit-card ${selected.has(log._id) ? 'mobile-record-selected' : ''}`}>
               <div className="mobile-audit-header">
                 <span className={`badge ${actionBadgeClass(log.action)}`}>{actionLabels[log.action] || log.action}</span>
-                <span className="text-muted text-xs">{formatDateTime(log.createdAt)}</span>
+                <span className="mobile-audit-header-right">
+                  <span className="text-muted text-xs">{formatDateTime(log.createdAt)}</span>
+                  <input type="checkbox" checked={selected.has(log._id)} onChange={() => toggleSelect(log._id)} aria-label={`Select ${actionLabels[log.action] || log.action} log`} />
+                </span>
               </div>
               <div className="mobile-audit-body">
                 <div className="mobile-audit-user">
@@ -924,6 +1101,9 @@ function AdminAudit() {
                   </div>
                 )}
               </div>
+              <div className="mobile-record-actions">
+                <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(log)} disabled={deleting}>Delete</button>
+              </div>
             </div>
           ))}
           {logs.length === 0 && (
@@ -936,12 +1116,34 @@ function AdminAudit() {
 
         {pagination.pages > 1 && (
           <div className="pagination">
-            <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
+            <button disabled={page === 1 || deleting} onClick={() => setPage(p => p - 1)}>Prev</button>
             <span className="pagination-info">Page {page} of {pagination.pages}</span>
-            <button disabled={page === pagination.pages} onClick={() => setPage(p => p + 1)}>Next</button>
+            <button disabled={page === pagination.pages || deleting} onClick={() => setPage(p => p + 1)}>Next</button>
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={Boolean(pendingDelete)}
+        title="Delete audit log"
+        message="Delete this audit log entry? This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDeleteOne}
+        onCancel={() => setPendingDelete(null)}
+        loading={deleting}
+      />
+
+      <ConfirmModal
+        open={pendingBulkDelete}
+        title="Delete selected audit logs"
+        message={`Delete ${selected.size} selected audit log entr${selected.size === 1 ? 'y' : 'ies'}? Only the explicitly selected entries will be removed. This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={confirmBulkDelete}
+        onCancel={() => setPendingBulkDelete(false)}
+        loading={deleting}
+      />
     </div>
   );
 }

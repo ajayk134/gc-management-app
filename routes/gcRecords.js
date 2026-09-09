@@ -374,4 +374,59 @@ router.post('/:id/undo-pay', adminOnly, async (req, res) => {
   }
 });
 
+// Bulk undo payment status (admin only).
+// Reverts paid_back -> pending and clears paidBackAt for eligible records.
+// Pending/not-found records are skipped (never silently modified).
+router.post('/bulk-undo-pay', adminOnly, async (req, res) => {
+  try {
+    const { recordIds } = req.body;
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return res.status(400).json({ error: 'Record IDs are required' });
+    }
+
+    const results = { success: [], skipped: [], failed: [] };
+
+    for (const id of recordIds) {
+      try {
+        const record = await GCRecord.findById(id);
+        if (!record) {
+          results.skipped.push({ id, reason: 'Not found' });
+          continue;
+        }
+
+        if (record.paymentStatus !== 'paid_back') {
+          results.skipped.push({ id, reason: 'Not paid back' });
+          continue;
+        }
+
+        record.paymentStatus = 'pending';
+        record.paidBackAt = null;
+        await record.save();
+
+        results.success.push(id);
+      } catch (err) {
+        results.failed.push({ id, error: err.message });
+      }
+    }
+
+    if (results.success.length > 0) {
+      await logAction('record_edited', req.userId, 'record', results.success[0], {
+        action: 'bulk_undo_paid_back',
+        count: results.success.length,
+        skippedCount: results.skipped.length,
+        failedCount: results.failed.length,
+        recordIds: results.success
+      }, req.ip);
+    }
+
+    res.json({
+      message: `${results.success.length} record(s) reverted to pending`,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Bulk undo failed' });
+  }
+});
+
 module.exports = router;
