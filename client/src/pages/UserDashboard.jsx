@@ -201,7 +201,7 @@ export default function UserDashboard() {
           ) : (
             <>
               <div className="table-container">
-                <table className="table">
+                <table className="table user-records-table">
                   <thead>
                     <tr>
                       <th>Gift Card</th>

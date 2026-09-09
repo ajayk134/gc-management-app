@@ -136,7 +136,7 @@ function AdminStats() {
             <h3 className="card-title">Per-User Statistics</h3>
           </div>
           <div className="table-container">
-            <table className="table">
+            <table className="table per-user-table">
               <thead>
                 <tr>
                   <th>User</th>
@@ -451,7 +451,7 @@ function AdminRecords() {
         ) : (
           <>
             <div className="table-container">
-              <table className="table table-compact">
+              <table className="table table-compact records-table">
                 <thead>
                   <tr>
                     <th style={{ width: '40px' }}><input type="checkbox" checked={selected.size === records.length && records.length > 0} onChange={toggleSelectAll} /></th>
@@ -873,7 +873,7 @@ function AdminAudit() {
         </div>
 
         <div className="table-container">
-          <table className="table table-compact">
+          <table className="table table-compact audit-table">
             <thead>
               <tr>
                 <th>Date / Time</th>
