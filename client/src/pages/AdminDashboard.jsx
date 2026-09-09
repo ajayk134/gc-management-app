@@ -489,8 +489,24 @@ function AdminRecords() {
             </div>
 
             <div className="mobile-view">
+              {records.length > 0 && (
+                <div className="mobile-select-all-row">
+                  <label className="mobile-select-all-label">
+                    <input
+                      type="checkbox"
+                      ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < records.length; }}
+                      checked={selected.size === records.length && records.length > 0}
+                      onChange={toggleSelectAll}
+                    />
+                    <span>Select All</span>
+                  </label>
+                  {selected.size > 0 && (
+                    <span className="mobile-selected-count">{selected.size} selected</span>
+                  )}
+                </div>
+              )}
               {records.map(r => (
-                <div key={r._id} className="mobile-record">
+                <div key={r._id} className={`mobile-record ${selected.has(r._id) ? 'mobile-record-selected' : ''}`}>
                   <div className="mobile-record-header">
                     <div>
                       <div className="mobile-record-gc">{r.giftCard}</div>
