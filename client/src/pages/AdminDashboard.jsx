@@ -70,62 +70,62 @@ function AdminStats() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
   if (loading) return <div className="loading"><div className="spinner"></div></div>;
-  if (!stats) return <div>Failed to load statistics</div>;
+  if (!stats) return <div className="empty-state"><div className="empty-state-text">Failed to load statistics</div></div>;
 
   return (
     <div>
-      <h2 style={{ marginBottom: '1rem', fontSize: '1.25rem', fontWeight: '600' }}>Admin Dashboard</h2>
+      <h2 className="section-title">Admin Dashboard</h2>
       
-      <div className="filter-bar" style={{ marginBottom: '1.5rem' }}>
+      <div className="filter-bar">
         <select className="form-select" value={userFilter} onChange={e => setUserFilter(e.target.value)}>
           <option value="">All Users</option>
           {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
         </select>
-        <input type="date" className="form-input" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: 'auto' }} />
-        <input type="date" className="form-input" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: 'auto' }} />
+        <input type="date" className="form-input form-input-date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        <input type="date" className="form-input form-input-date" value={endDate} onChange={e => setEndDate(e.target.value)} />
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card stat-card-users">
           <div className="stat-label">Total Users</div>
           <div className="stat-value">{stats.totalUsers || 0}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-active">
           <div className="stat-label">Active Users</div>
           <div className="stat-value text-success">{stats.activeUsers || 0}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-records">
           <div className="stat-label">Total Records</div>
           <div className="stat-value">{stats.totalRecords || 0}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-pending">
           <div className="stat-label">Pending Records</div>
           <div className="stat-value text-warning">{stats.pendingCount || 0}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-paid">
           <div className="stat-label">Paid Back Records</div>
           <div className="stat-value text-success">{stats.paidBackCount || 0}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-gc">
           <div className="stat-label">Total GC Amount</div>
           <div className="stat-value">{formatCurrency(stats.totalAmount)}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-paid-amt">
           <div className="stat-label">Total Paid Amount</div>
           <div className="stat-value text-primary">{formatCurrency(stats.totalPaid)}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-pending-amt">
           <div className="stat-label">Total Pending</div>
           <div className="stat-value text-warning">{formatCurrency(stats.pendingAmount)}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-paidback">
           <div className="stat-label">Total Paid Back</div>
           <div className="stat-value text-success">{formatCurrency(stats.paidBackAmount)}</div>
         </div>
       </div>
 
       {stats.perUser && stats.perUser.length > 0 && (
-        <div className="card" style={{ marginTop: '1.5rem' }}>
+        <div className="card per-user-section">
           <div className="card-header">
             <h3 className="card-title">Per-User Statistics</h3>
           </div>
@@ -134,6 +134,7 @@ function AdminStats() {
               <thead>
                 <tr>
                   <th>User</th>
+                  <th>Email</th>
                   <th>Cards</th>
                   <th>GC Amount</th>
                   <th>Paid</th>
@@ -145,20 +146,67 @@ function AdminStats() {
               <tbody>
                 {stats.perUser.map(u => (
                   <tr key={u.userId}>
-                    <td>
-                      <div><strong>{u.name}</strong></div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{u.email}</div>
-                    </td>
+                    <td><strong>{u.name}</strong></td>
+                    <td className="text-muted">{u.email}</td>
                     <td>{u.totalRecords}</td>
                     <td>{formatCurrency(u.totalAmount)}</td>
                     <td>{formatCurrency(u.totalPaid)}</td>
-                    <td>{formatCurrency(u.pendingAmount)}</td>
-                    <td>{formatCurrency(u.paidBackAmount)}</td>
+                    <td>
+                      {formatCurrency(u.pendingAmount)}
+                      {u.pendingCount > 0 && <div className="text-muted text-xs">{u.pendingCount} pending</div>}
+                    </td>
+                    <td>
+                      {formatCurrency(u.paidBackAmount)}
+                      {u.paidBackCount > 0 && <div className="text-muted text-xs">{u.paidBackCount} paid back</div>}
+                    </td>
                     <td><span className={`badge ${u.active ? 'badge-active' : 'badge-disabled'}`}>{u.active ? 'Active' : 'Disabled'}</span></td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mobile-view">
+            {stats.perUser.map(u => (
+              <div key={u.userId} className="mobile-user-stat-card">
+                <div className="mobile-user-stat-header">
+                  <div>
+                    <div className="mobile-user-stat-name">{u.name}</div>
+                    <div className="mobile-user-stat-email">{u.email}</div>
+                  </div>
+                  <span className={`badge ${u.active ? 'badge-active' : 'badge-disabled'}`}>{u.active ? 'Active' : 'Disabled'}</span>
+                </div>
+                <div className="mobile-user-stat-grid">
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">Records</span>
+                    <span className="mobile-user-stat-value">{u.totalRecords}</span>
+                  </div>
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">GC Amount</span>
+                    <span className="mobile-user-stat-value">{formatCurrency(u.totalAmount)}</span>
+                  </div>
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">Total Paid</span>
+                    <span className="mobile-user-stat-value text-primary">{formatCurrency(u.totalPaid)}</span>
+                  </div>
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">Pending Amt</span>
+                    <span className="mobile-user-stat-value text-warning">{formatCurrency(u.pendingAmount)}</span>
+                  </div>
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">Paid Back Amt</span>
+                    <span className="mobile-user-stat-value text-success">{formatCurrency(u.paidBackAmount)}</span>
+                  </div>
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">Pending</span>
+                    <span className="mobile-user-stat-value text-warning">{u.pendingCount || 0}</span>
+                  </div>
+                  <div className="mobile-user-stat-item">
+                    <span className="mobile-user-stat-label">Paid Back</span>
+                    <span className="mobile-user-stat-value text-success">{u.paidBackCount || 0}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -313,7 +361,7 @@ function AdminRecords() {
     }
   };
 
-  const handleExport = async (format) => {
+  const handleExport = async (fmt) => {
     try {
       const params = new URLSearchParams();
       if (userFilter) params.set('userId', userFilter);
@@ -321,12 +369,12 @@ function AdminRecords() {
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
 
-      const response = await api.downloadFile(`/api/export/${format}?${params}`);
+      const response = await api.downloadFile(`/api/export/${fmt}?${params}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `gc-records.${format === 'excel' ? 'xlsx' : 'csv'}`;
+      a.download = `gc-records.${fmt === 'excel' ? 'xlsx' : 'csv'}`;
       a.click();
       window.URL.revokeObjectURL(url);
       toast.success('Export downloaded');
@@ -337,9 +385,9 @@ function AdminRecords() {
 
   return (
     <div>
-      <div className="card-header" style={{ marginBottom: '1rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>All GC Records</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+      <div className="section-header">
+        <h2 className="section-title">All GC Records</h2>
+        <div className="section-actions">
           <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: users[0]?._id || '' }); setShowForm(true); }}>+ Add Record</button>
           <button className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
           <button className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
@@ -349,7 +397,7 @@ function AdminRecords() {
       {selected.size > 0 && (
         <div className="bulk-action-bar">
           <span>{selected.size} record(s) selected</span>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="bulk-action-buttons">
             <button className="btn btn-success btn-sm" onClick={handleBulkPay}>Mark Selected as Paid Back</button>
             <button className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())}>Clear Selection</button>
           </div>
@@ -359,7 +407,7 @@ function AdminRecords() {
       <div className="card">
         <div className="filter-bar">
           <div className="search-input">
-            <input type="text" className="form-input" placeholder="Search card, notes..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} style={{ paddingLeft: '0.75rem' }} />
+            <input type="text" className="form-input" placeholder="Search card, notes..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
           </div>
           <select className="form-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
             <option value="">All Status</option>
@@ -370,8 +418,8 @@ function AdminRecords() {
             <option value="">All Users</option>
             {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
           </select>
-          <input type="date" className="form-input" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} style={{ width: 'auto' }} />
-          <input type="date" className="form-input" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} style={{ width: 'auto' }} />
+          <input type="date" className="form-input form-input-date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} />
+          <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
           <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
         </div>
 
@@ -402,17 +450,17 @@ function AdminRecords() {
                     <tr key={r._id}>
                       <td><input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)} /></td>
                       <td>
-                        <div style={{ fontSize: '0.8125rem' }}>{r.user?.name || 'Unknown'}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{r.user?.email}</div>
+                        <div className="td-bold">{r.user?.name || 'Unknown'}</div>
+                        <div className="text-muted text-xs">{r.user?.email}</div>
                       </td>
                       <td><strong>{r.giftCard}</strong></td>
                       <td>{formatCurrency(r.giftCardAmount)}</td>
                       <td>{formatCurrency(r.paid)}</td>
                       <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                       <td>{formatDate(r.createdAt)}</td>
-                      <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '-'}</td>
+                      <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
                       <td>
-                        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        <div className="action-buttons">
                           <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
                           {r.paymentStatus === 'pending' ? (
                             <button className="btn btn-success btn-sm" onClick={() => handlePayBack(r._id)}>Pay</button>
@@ -433,19 +481,19 @@ function AdminRecords() {
                 <div key={r._id} className="mobile-record">
                   <div className="mobile-record-header">
                     <div>
-                      <div className="mobile-record-gc">Card: {r.giftCard}</div>
-                      <div style={{ fontSize: '0.8125rem', color: 'var(--gray-500)' }}>User: {r.user?.name}</div>
+                      <div className="mobile-record-gc">{r.giftCard}</div>
+                      <div className="text-muted text-xs">{r.user?.name}</div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="mobile-record-header-right">
                       <input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)} />
                       <span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span>
                     </div>
                   </div>
                   <div className="mobile-record-details">
-                    <div>Amount: {formatCurrency(r.giftCardAmount)}</div>
-                    <div>Paid: {formatCurrency(r.paid)}</div>
-                    <div>Submitted: {formatDate(r.createdAt)}</div>
-                    <div>Paid Back: {r.paidBackAt ? formatDate(r.paidBackAt) : '-'}</div>
+                    <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
+                    <div><span className="text-muted">Paid:</span> {formatCurrency(r.paid)}</div>
+                    <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
+                    <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                   </div>
                   <div className="mobile-record-actions">
                     <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
@@ -463,7 +511,7 @@ function AdminRecords() {
             {pagination.pages > 1 && (
               <div className="pagination">
                 <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-                <span style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>Page {page} of {pagination.pages}</span>
+                <span className="pagination-info">Page {page} of {pagination.pages}</span>
                 <button disabled={page === pagination.pages} onClick={() => setPage(p => p + 1)}>Next</button>
               </div>
             )}
@@ -476,7 +524,7 @@ function AdminRecords() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingRecord ? 'Edit Record' : 'Add Record'}</h3>
-              <button className="btn-icon" onClick={() => setShowForm(false)}>✕</button>
+              <button className="btn-icon" onClick={() => setShowForm(false)}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -606,15 +654,15 @@ function AdminUsers() {
 
   return (
     <div>
-      <div className="card-header" style={{ marginBottom: '1rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>User Management</h2>
+      <div className="section-header">
+        <h2 className="section-title">User Management</h2>
         <button className="btn btn-primary" onClick={() => { setEditingUser(null); setFormData({ name: '', email: '', password: '' }); setShowForm(true); }}>+ Add User</button>
       </div>
 
       <div className="card">
         <div className="filter-bar">
           <div className="search-input">
-            <input type="text" className="form-input" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '0.75rem' }} />
+            <input type="text" className="form-input" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
 
@@ -656,7 +704,7 @@ function AdminUsers() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingUser ? 'Edit User' : 'Add User'}</h3>
-              <button className="btn-icon" onClick={() => setShowForm(false)}>✕</button>
+              <button className="btn-icon" onClick={() => setShowForm(false)}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -689,7 +737,7 @@ function AdminUsers() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">Reset Password for {resetPasswordUser.name}</h3>
-              <button className="btn-icon" onClick={() => setResetPasswordUser(null)}>✕</button>
+              <button className="btn-icon" onClick={() => setResetPasswordUser(null)}>&times;</button>
             </div>
             <form onSubmit={handleResetPassword}>
               <div className="modal-body">
@@ -718,6 +766,7 @@ function AdminAudit() {
   const [actionFilter, setActionFilter] = useState('');
 
   const fetchLogs = useCallback(async () => {
+    setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('page', page);
@@ -743,11 +792,36 @@ function AdminAudit() {
     login_success: 'Login Success', login_failed: 'Login Failed'
   };
 
+  const actionBadgeClass = (action) => {
+    if (action === 'login_failed') return 'badge-disabled';
+    if (action === 'user_deleted' || action === 'record_deleted') return 'badge-danger';
+    if (action === 'user_disabled') return 'badge-warning';
+    if (action === 'login_success' || action === 'user_enabled' || action === 'record_paid_back' || action === 'bulk_paid_back') return 'badge-active';
+    if (action === 'user_created' || action === 'record_created') return 'badge-primary';
+    return 'status-pending';
+  };
+
+  const redactSensitive = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(redactSensitive);
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (/pin|password|secret|token|mongodb|apikey|api_key/i.test(k)) continue;
+      out[k] = redactSensitive(v);
+    }
+    return out;
+  };
+
+  const formatDetails = (metadata) => {
+    if (!metadata || Object.keys(metadata).length === 0) return null;
+    return JSON.stringify(redactSensitive(metadata));
+  };
+
   if (loading) return <div className="loading"><div className="spinner"></div></div>;
 
   return (
     <div>
-      <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1rem' }}>Audit History</h2>
+      <h2 className="section-title">Audit History</h2>
       <div className="card">
         <div className="filter-bar">
           <select className="form-select" value={actionFilter} onChange={e => { setActionFilter(e.target.value); setPage(1); }}>
@@ -760,36 +834,66 @@ function AdminAudit() {
           <table className="table table-compact">
             <thead>
               <tr>
-                <th>Date</th>
+                <th>Date / Time</th>
                 <th>Action</th>
-                <th>By</th>
+                <th>User</th>
+                <th>Target</th>
                 <th>Details</th>
               </tr>
             </thead>
             <tbody>
               {logs.map(log => (
                 <tr key={log._id}>
-                  <td>{formatDateTime(log.createdAt)}</td>
-                  <td><span className="badge status-pending" style={{ fontSize: '0.75rem' }}>{actionLabels[log.action] || log.action}</span></td>
+                  <td className="text-nowrap">{formatDateTime(log.createdAt)}</td>
+                  <td><span className={`badge ${actionBadgeClass(log.action)}`}>{actionLabels[log.action] || log.action}</span></td>
                   <td>{log.performedBy?.name || 'System'}</td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--gray-600)' }}>
-                    {log.metadata && Object.keys(log.metadata).length > 0 && (
-                      <span>{JSON.stringify(log.metadata).substring(0, 100)}</span>
-                    )}
+                  <td><span className="badge badge-neutral">{log.targetType === 'user' ? 'User' : 'Record'}</span></td>
+                  <td className="text-muted text-xs audit-details-cell">
+                    <span>{formatDetails(log.metadata)}</span>
                   </td>
                 </tr>
               ))}
               {logs.length === 0 && (
-                <tr><td colSpan="4" style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-500)' }}>No audit logs found</td></tr>
+                <tr><td colSpan="5" className="text-center text-muted" style={{ padding: '2rem' }}>No audit logs found</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
+        <div className="mobile-view">
+          {logs.map(log => (
+            <div key={log._id} className="mobile-audit-card">
+              <div className="mobile-audit-header">
+                <span className={`badge ${actionBadgeClass(log.action)}`}>{actionLabels[log.action] || log.action}</span>
+                <span className="text-muted text-xs">{formatDateTime(log.createdAt)}</span>
+              </div>
+              <div className="mobile-audit-body">
+                <div className="mobile-audit-user">
+                  <span className="text-muted">User:</span> {log.performedBy?.name || 'System'}
+                </div>
+                <div className="mobile-audit-user">
+                  <span className="text-muted">Target:</span> <span className={`badge badge-neutral`}>{log.targetType === 'user' ? 'User' : 'Record'}</span>
+                </div>
+                {formatDetails(log.metadata) && (
+                  <div className="mobile-audit-details">
+                    <span className="text-muted">Details:</span> {formatDetails(log.metadata).substring(0, 200)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {logs.length === 0 && (
+            <div className="empty-state">
+              <div className="empty-state-icon">📋</div>
+              <div className="empty-state-text">No audit logs found</div>
+            </div>
+          )}
+        </div>
+
         {pagination.pages > 1 && (
           <div className="pagination">
             <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-            <span style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>Page {page} of {pagination.pages}</span>
+            <span className="pagination-info">Page {page} of {pagination.pages}</span>
             <button disabled={page === pagination.pages} onClick={() => setPage(p => p + 1)}>Next</button>
           </div>
         )}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
+import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
 import toast from 'react-hot-toast';
 
 export default function UserDashboard() {
@@ -121,6 +121,8 @@ export default function UserDashboard() {
       </header>
 
       <div className="main-content">
+        <h2 className="section-title">My Dashboard</h2>
+
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-label">Total Cards</div>
@@ -164,7 +166,6 @@ export default function UserDashboard() {
                 placeholder="Search gift card, notes..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                style={{ paddingLeft: '0.75rem' }}
               />
             </div>
             <select className="form-select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
@@ -172,8 +173,8 @@ export default function UserDashboard() {
               <option value="pending">Pending</option>
               <option value="paid_back">Paid Back</option>
             </select>
-            <input type="date" className="form-input" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} style={{ width: 'auto' }} />
-            <input type="date" className="form-input" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} style={{ width: 'auto' }} />
+            <input type="date" className="form-input form-input-date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
+            <input type="date" className="form-input form-input-date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
             <button className="btn btn-outline btn-sm" onClick={resetFilters}>Clear</button>
           </div>
 
@@ -181,7 +182,7 @@ export default function UserDashboard() {
             <div className="empty-state">
               <div className="empty-state-icon">📋</div>
               <div className="empty-state-text">No records found</div>
-              <p style={{ color: 'var(--gray-400)', fontSize: '0.875rem' }}>Add your first gift card record</p>
+              <p className="text-muted" style={{ fontSize: '0.8125rem' }}>Add your first gift card record</p>
             </div>
           ) : (
             <>
@@ -206,9 +207,9 @@ export default function UserDashboard() {
                         <td>{formatCurrency(r.paid)}</td>
                         <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                         <td>{formatDate(r.createdAt)}</td>
-                        <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '-'}</td>
+                        <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                          <div className="action-buttons">
                             <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
                             <button className="btn btn-danger btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
                           </div>
@@ -224,16 +225,16 @@ export default function UserDashboard() {
                   <div key={r._id} className="mobile-record">
                     <div className="mobile-record-header">
                       <div>
-                        <div className="mobile-record-gc">Card: {r.giftCard}</div>
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--gray-500)' }}>PIN: {r.giftCardPin}</div>
+                        <div className="mobile-record-gc">{r.giftCard}</div>
+                        <div className="text-muted text-xs">PIN: {r.giftCardPin}</div>
                       </div>
                       <span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span>
                     </div>
                     <div className="mobile-record-details">
-                      <div>Amount: {formatCurrency(r.giftCardAmount)}</div>
-                      <div>Paid: {formatCurrency(r.paid)}</div>
-                      <div>Submitted: {formatDate(r.createdAt)}</div>
-                      <div>Paid Back: {r.paidBackAt ? formatDate(r.paidBackAt) : '-'}</div>
+                      <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
+                      <div><span className="text-muted">Paid:</span> {formatCurrency(r.paid)}</div>
+                      <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
+                      <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                     </div>
                     {r.notes && <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--gray-600)' }}>Note: {r.notes}</div>}
                     <div className="mobile-record-actions">
@@ -247,7 +248,7 @@ export default function UserDashboard() {
               {pagination.pages > 1 && (
                 <div className="pagination">
                   <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>Page {page} of {pagination.pages}</span>
+                  <span className="pagination-info">Page {page} of {pagination.pages}</span>
                   <button disabled={page === pagination.pages} onClick={() => setPage(p => p + 1)}>Next</button>
                 </div>
               )}
@@ -261,7 +262,7 @@ export default function UserDashboard() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">{editingRecord ? 'Edit Record' : 'Add Gift Card Record'}</h3>
-              <button className="btn-icon" onClick={() => setShowForm(false)}>✕</button>
+              <button className="btn-icon" onClick={() => setShowForm(false)}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">

@@ -172,7 +172,9 @@ router.put('/:id', async (req, res) => {
     await record.save();
     await record.populate('user', 'name email');
 
-    await logAction('record_edited', req.userId, 'record', record._id, { changes: req.body }, req.ip);
+    const safeChanges = { ...req.body };
+    delete safeChanges.giftCardPin;
+    await logAction('record_edited', req.userId, 'record', record._id, { changes: safeChanges }, req.ip);
 
     res.json({ record });
   } catch (error) {
