@@ -1,7 +1,7 @@
 const express = require('express');
 const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
-const { auth, adminOnly, userOnly } = require('../middleware/auth');
+const { auth, adminOnly } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 
 const router = express.Router();
