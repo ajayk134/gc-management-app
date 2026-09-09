@@ -173,8 +173,14 @@ export default function UserDashboard() {
               <option value="pending">Pending</option>
               <option value="paid_back">Paid Back</option>
             </select>
-            <input type="date" className="form-input form-input-date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
-            <input type="date" className="form-input form-input-date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
+            <div className="filter-group">
+              <label className="form-label">From</label>
+              <input type="date" className="form-input form-input-date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
+            </div>
+            <div className="filter-group">
+              <label className="form-label">To</label>
+              <input type="date" className="form-input form-input-date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
+            </div>
             <button className="btn btn-outline btn-sm" onClick={resetFilters}>Clear</button>
           </div>
 

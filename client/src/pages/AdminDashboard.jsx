@@ -81,8 +81,14 @@ function AdminStats() {
           <option value="">All Users</option>
           {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
         </select>
-        <input type="date" className="form-input form-input-date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-        <input type="date" className="form-input form-input-date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+        <div className="filter-group">
+          <label className="form-label">From</label>
+          <input type="date" className="form-input form-input-date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        </div>
+        <div className="filter-group">
+          <label className="form-label">To</label>
+          <input type="date" className="form-input form-input-date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+        </div>
       </div>
 
       <div className="stats-grid">
@@ -418,8 +424,14 @@ function AdminRecords() {
             <option value="">All Users</option>
             {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
           </select>
-          <input type="date" className="form-input form-input-date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} />
-          <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
+          <div className="filter-group">
+            <label className="form-label">From</label>
+            <input type="date" className="form-input form-input-date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} />
+          </div>
+          <div className="filter-group">
+            <label className="form-label">To</label>
+            <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
+          </div>
           <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
         </div>
 

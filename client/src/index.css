@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --primary: #4f46e5;
   --primary-hover: #4338ca;
   --primary-light: #eef2ff;
@@ -147,6 +148,7 @@ body {
 .main-content {
   flex: 1;
   padding: 1.5rem;
+  padding-bottom: 3rem;
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
@@ -237,6 +239,7 @@ body {
   color: var(--gray-900);
   letter-spacing: -0.025em;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .stat-value.text-success { color: var(--success); }
@@ -350,11 +353,95 @@ body {
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
 }
 
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .form-input::placeholder { color: var(--gray-400); }
 
 .form-input-date {
   width: auto;
-  min-width: 140px;
+  min-width: 150px;
+}
+
+/* ===== DATE INPUTS =====
+   Keep native date pickers but guarantee the selected value is always
+   visibly readable WITHOUT clicking, especially on mobile/iOS where the
+   internal WebKit date field clips or hides text when the input uses a
+   fixed height + custom line-height. */
+.form-input[type="date"],
+.form-input[type="datetime-local"],
+.form-input[type="month"] {
+  color-scheme: light;
+  cursor: pointer;
+  height: auto;
+  min-height: 42px;
+  line-height: normal;
+}
+
+.form-input[type="date"]::-webkit-clear-button,
+.form-input[type="datetime-local"]::-webkit-clear-button,
+.form-input[type="month"]::-webkit-clear-button,
+.form-input[type="date"]::-webkit-inner-spin-button,
+.form-input[type="datetime-local"]::-webkit-inner-spin-button,
+.form-input[type="month"]::-webkit-inner-spin-button {
+  display: none;
+}
+
+.form-input[type="date"]::-webkit-calendar-picker-indicator,
+.form-input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.form-input[type="month"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+  padding-left: 0.25rem;
+}
+
+.form-input[type="date"]::-webkit-calendar-picker-indicator:hover,
+.form-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+.form-input[type="month"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.form-input[type="date"]::-webkit-datetime-edit,
+.form-input[type="datetime-local"]::-webkit-datetime-edit,
+.form-input[type="month"]::-webkit-datetime-edit {
+  display: inline-flex;
+  align-items: center;
+  color: var(--gray-800);
+  -webkit-text-fill-color: var(--gray-800);
+  font-size: 0.875rem;
+  line-height: normal;
+  min-height: 1.5em;
+  padding: 0;
+}
+
+.form-input[type="date"]::-webkit-datetime-edit-text,
+.form-input[type="date"]::-webkit-datetime-edit-month-field,
+.form-input[type="date"]::-webkit-datetime-edit-day-field,
+.form-input[type="date"]::-webkit-datetime-edit-year-field,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-text,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-month-field,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-day-field,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-year-field,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-hour-field,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-minute-field,
+.form-input[type="datetime-local"]::-webkit-datetime-edit-ampm-field,
+.form-input[type="month"]::-webkit-datetime-edit-text,
+.form-input[type="month"]::-webkit-datetime-edit-month-field,
+.form-input[type="month"]::-webkit-datetime-edit-year-field {
+  color: var(--gray-800);
+  -webkit-text-fill-color: var(--gray-800);
+  font-size: 0.875rem;
+  line-height: normal;
+  padding: 0;
+}
+
+.form-input[type="date"]:focus::-webkit-datetime-edit,
+.form-input[type="datetime-local"]:focus::-webkit-datetime-edit,
+.form-input[type="month"]:focus::-webkit-datetime-edit {
+  color: var(--gray-800);
+  -webkit-text-fill-color: var(--gray-800);
 }
 
 .form-textarea {
@@ -400,6 +487,7 @@ body {
   border-bottom: 1px solid var(--gray-100);
   color: var(--gray-700);
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 
 .table tbody tr:hover td { background: var(--gray-25); }
@@ -513,6 +601,22 @@ body {
 .search-input .form-input {
   width: 100%;
   min-width: unset;
+}
+
+/* ===== FILTER GROUP (label + control) ===== */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filter-group .form-label {
+  margin-bottom: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gray-500);
 }
 
 /* ===== PAGINATION ===== */
@@ -932,6 +1036,54 @@ input[type="checkbox"] {
     min-height: 56px;
     flex-wrap: wrap;
     gap: 0;
+  }
+
+  .main-content {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  /* Prevent iOS auto-zoom on focus; comfortable touch targets */
+  .form-input,
+  .form-select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .form-textarea {
+    font-size: 0.875rem;
+  }
+
+  .btn:not(.btn-sm) {
+    min-height: 44px;
+    padding-top: 0.5625rem;
+    padding-bottom: 0.5625rem;
+  }
+
+  .btn-sm {
+    min-height: 36px;
+  }
+
+  .tab {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .pagination button {
+    min-height: 40px;
+    padding: 0.5rem 0.875rem;
+  }
+
+  .modal-footer {
+    display: flex;
+  }
+
+  .modal-footer .btn {
+    flex: 1;
+  }
+
+  .filter-group {
+    width: 100%;
   }
 
   .header-nav {
