@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
 import toast from 'react-hot-toast';
@@ -122,6 +123,7 @@ export default function UserDashboard() {
           <span className="header-logo">GC Manager</span>
         </div>
         <div className="header-right">
+          <ThemeToggle />
           <span className="header-user">{user.name}</span>
           <span className="header-role role-user">User</span>
           <button className="btn-logout" onClick={logout}>Logout</button>

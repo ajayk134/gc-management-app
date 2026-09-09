@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
 import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
 import toast from 'react-hot-toast';
@@ -20,6 +21,7 @@ export default function AdminDashboard() {
           <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Audit</button>
         </div>
         <div className="header-right">
+          <ThemeToggle />
           <span className="header-user">{user.name}</span>
           <span className="header-role role-admin">Admin</span>
           <button className="btn-logout" onClick={logout}>Logout</button>
