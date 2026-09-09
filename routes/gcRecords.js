@@ -1,5 +1,6 @@
 const express = require('express');
 const GCRecord = require('../models/GCRecord');
+const User = require('../models/User');
 const { auth, adminOnly, userOnly } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 
@@ -31,11 +32,20 @@ router.get('/', async (req, res) => {
     }
 
     if (search) {
+      const userIds = await User.find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } }
+        ]
+      }).select('_id');
       filter.$or = [
         { giftCard: { $regex: search, $options: 'i' } },
         { notes: { $regex: search, $options: 'i' } },
         { adminNote: { $regex: search, $options: 'i' } }
       ];
+      if (userIds.length > 0) {
+        filter.$or.push({ user: { $in: userIds.map(u => u._id) } });
+      }
     }
 
     const sortField = sort || 'createdAt';
@@ -98,14 +108,20 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Amounts must be non-negative' });
     }
 
+    const amountVal = parseFloat(giftCardAmount);
+    const paidVal = parseFloat(paid);
+    if (paidVal > amountVal) {
+      return res.status(400).json({ error: 'Paid amount cannot exceed gift card amount' });
+    }
+
     const userId = req.user.role === 'admin' ? (req.body.userId || req.userId) : req.userId;
 
     const record = await GCRecord.create({
       user: userId,
       giftCard: giftCard.trim(),
       giftCardPin: giftCardPin.trim(),
-      giftCardAmount: parseFloat(giftCardAmount),
-      paid: parseFloat(paid),
+      giftCardAmount: amountVal,
+      paid: paidVal,
       notes: notes || ''
     });
 
@@ -141,8 +157,15 @@ router.put('/:id', async (req, res) => {
 
     if (giftCard !== undefined) record.giftCard = giftCard.trim();
     if (giftCardPin !== undefined) record.giftCardPin = giftCardPin.trim();
-    if (giftCardAmount !== undefined) record.giftCardAmount = parseFloat(giftCardAmount);
-    if (paid !== undefined) record.paid = parseFloat(paid);
+
+    const finalAmount = giftCardAmount !== undefined ? parseFloat(giftCardAmount) : record.giftCardAmount;
+    const finalPaid = paid !== undefined ? parseFloat(paid) : record.paid;
+    if (giftCardAmount !== undefined) record.giftCardAmount = finalAmount;
+    if (paid !== undefined) record.paid = finalPaid;
+    if (finalPaid > finalAmount) {
+      return res.status(400).json({ error: 'Paid amount cannot exceed gift card amount' });
+    }
+
     if (notes !== undefined) record.notes = notes;
     if (adminNote !== undefined && req.user.role === 'admin') record.adminNote = adminNote;
 
@@ -194,6 +217,10 @@ router.post('/:id/pay', adminOnly, async (req, res) => {
       return res.status(404).json({ error: 'Record not found' });
     }
 
+    if (record.paymentStatus === 'paid_back') {
+      return res.status(400).json({ error: 'Record is already marked as paid back' });
+    }
+
     record.paymentStatus = 'paid_back';
     record.paidBackAt = new Date();
     if (adminNote) record.adminNote = adminNote;
@@ -224,11 +251,18 @@ router.post('/bulk-pay', adminOnly, async (req, res) => {
 
     const results = { success: [], failed: [] };
 
+    let skippedAlreadyPaid = 0;
+
     for (const id of recordIds) {
       try {
         const record = await GCRecord.findById(id);
         if (!record) {
           results.failed.push({ id, error: 'Not found' });
+          continue;
+        }
+
+        if (record.paymentStatus === 'paid_back') {
+          skippedAlreadyPaid++;
           continue;
         }
 
@@ -241,6 +275,10 @@ router.post('/bulk-pay', adminOnly, async (req, res) => {
       } catch (err) {
         results.failed.push({ id, error: err.message });
       }
+    }
+
+    if (skippedAlreadyPaid > 0) {
+      results.skipped = skippedAlreadyPaid;
     }
 
     if (results.success.length > 0) {

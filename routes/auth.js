@@ -21,11 +21,13 @@ router.post('/login', async (req, res) => {
     }
 
     if (!user.active) {
+      await logAction('login_failed', user._id, 'user', user._id, { reason: 'disabled' }, req.ip).catch(() => {});
       return res.status(403).json({ error: 'Account is disabled. Contact administrator.' });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      await logAction('login_failed', user._id, 'user', user._id, { reason: 'invalid_password' }, req.ip).catch(() => {});
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 

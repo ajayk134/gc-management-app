@@ -47,8 +47,16 @@ const authLimiter = rateLimit({
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,https://gc-management-app.onrender.com')
+  .split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
   credentials: true
 }));
 

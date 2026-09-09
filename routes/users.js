@@ -98,6 +98,13 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({ user: user.toJSON() });
   } catch (error) {
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ error: messages[0] || 'Invalid user data' });
+    }
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
     console.error('Create user error:', error);
     res.status(500).json({ error: 'Failed to create user' });
   }
@@ -125,15 +132,27 @@ router.put('/:id', async (req, res) => {
       user.email = email.toLowerCase().trim();
     }
 
+    const prevActive = user.active;
     if (name) user.name = name.trim();
     if (active !== undefined) user.active = active;
 
     await user.save();
 
-    await logAction('user_edited', req.userId, 'user', user._id, { name: user.name, email: user.email, active: user.active }, req.ip);
+    let action = 'user_edited';
+    if (active !== undefined && prevActive !== user.active) {
+      action = user.active ? 'user_enabled' : 'user_disabled';
+    }
+    await logAction(action, req.userId, 'user', user._id, { name: user.name, email: user.email, active: user.active }, req.ip);
 
     res.json({ user: user.toJSON() });
   } catch (error) {
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ error: messages[0] || 'Invalid user data' });
+    }
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
     console.error('Update user error:', error);
     res.status(500).json({ error: 'Failed to update user' });
   }
