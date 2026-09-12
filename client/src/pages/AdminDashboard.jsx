@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt, Clock, Banknote } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
 import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
+import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
+
+const navItems = [
+  { key: 'dashboard', label: 'Dashboard' },
+  { key: 'records', label: 'Records' },
+  { key: 'users', label: 'Users' },
+  { key: 'audit', label: 'Audit' }
+];
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -15,10 +24,17 @@ export default function AdminDashboard() {
           <span className="header-logo">GC Manager</span>
         </div>
         <div className="header-nav">
-          <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>Dashboard</button>
-          <button className={tab === 'records' ? 'active' : ''} onClick={() => setTab('records')}>Records</button>
-          <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>
-          <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Audit</button>
+          {navItems.map(item => (
+            <button
+              key={item.key}
+              type="button"
+              className={tab === item.key ? 'active' : ''}
+              aria-current={tab === item.key ? 'page' : undefined}
+              onClick={() => setTab(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
         <div className="header-right">
           <span className="header-user">{user.name}</span>
@@ -100,6 +116,9 @@ function AdminStats() {
   return (
     <div>
       <h2 className="section-title">Admin Dashboard</h2>
+      <p className="section-subtitle">
+        Track gift card records, pending payments, and paid-back amounts across all users. Use the filters below to narrow the view.
+      </p>
       
       <div className="filter-bar">
         <select className="form-select" value={userFilter} onChange={e => setUserFilter(e.target.value)}>
@@ -118,39 +137,66 @@ function AdminStats() {
 
       <div className="stats-grid">
         <div className="stat-card stat-card-users">
-          <div className="stat-label">Total Users</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Total Users</div>
+            <span className="stat-card-icon" aria-hidden="true"><Users size={16} /></span>
+          </div>
           <div className="stat-value">{stats.totalUsers || 0}</div>
         </div>
         <div className="stat-card stat-card-active">
-          <div className="stat-label">Active Users</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Active Users</div>
+            <span className="stat-card-icon" aria-hidden="true"><UserCheck size={16} /></span>
+          </div>
           <div className="stat-value text-success">{stats.activeUsers || 0}</div>
         </div>
         <div className="stat-card stat-card-records">
-          <div className="stat-label">Total Records</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Total Records</div>
+            <span className="stat-card-icon" aria-hidden="true"><CreditCard size={16} /></span>
+          </div>
           <div className="stat-value">{stats.totalRecords || 0}</div>
         </div>
         <div className="stat-card stat-card-pending">
-          <div className="stat-label">Pending Records</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Pending Records</div>
+            <span className="stat-card-icon" aria-hidden="true"><Hourglass size={16} /></span>
+          </div>
           <div className="stat-value text-warning">{stats.pendingCount || 0}</div>
         </div>
         <div className="stat-card stat-card-paid">
-          <div className="stat-label">Paid Back Records</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Paid Back Records</div>
+            <span className="stat-card-icon" aria-hidden="true"><CheckCircle2 size={16} /></span>
+          </div>
           <div className="stat-value text-success">{stats.paidBackCount || 0}</div>
         </div>
         <div className="stat-card stat-card-gc">
-          <div className="stat-label">Total GC Amount</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Total GC Amount</div>
+            <span className="stat-card-icon" aria-hidden="true"><Wallet size={16} /></span>
+          </div>
           <div className="stat-value">{formatCurrency(stats.totalAmount)}</div>
         </div>
         <div className="stat-card stat-card-paid-amt">
-          <div className="stat-label">Total Paid Amount</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Total Paid Amount</div>
+            <span className="stat-card-icon" aria-hidden="true"><Receipt size={16} /></span>
+          </div>
           <div className="stat-value text-primary">{formatCurrency(stats.totalPaid)}</div>
         </div>
         <div className="stat-card stat-card-pending-amt">
-          <div className="stat-label">Total Pending</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Total Pending</div>
+            <span className="stat-card-icon" aria-hidden="true"><Clock size={16} /></span>
+          </div>
           <div className="stat-value text-warning">{formatCurrency(stats.pendingAmount)}</div>
         </div>
         <div className="stat-card stat-card-paidback">
-          <div className="stat-label">Total Paid Back</div>
+          <div className="stat-card-head">
+            <div className="stat-label">Total Paid Back</div>
+            <span className="stat-card-icon" aria-hidden="true"><Banknote size={16} /></span>
+          </div>
           <div className="stat-value text-success">{formatCurrency(stats.paidBackAmount)}</div>
         </div>
       </div>
@@ -386,6 +432,8 @@ function AdminRecords() {
   const [pendingBulkUndo, setPendingBulkUndo] = useState(false);
   const [bulkUndoing, setBulkUndoing] = useState(false);
 
+  useModalScrollLock(showForm || pendingBulkUndo);
+
   const handleBulkUndo = () => {
     if (selected.size === 0) return toast.error('Select records first');
     setPendingBulkUndo(true);
@@ -460,22 +508,32 @@ function AdminRecords() {
       <div className="section-header">
         <h2 className="section-title">All GC Records</h2>
         <div className="section-actions">
-          <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: users[0]?._id || '' }); setFormError(''); setShowForm(true); }}>+ Add Record</button>
-          <button className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
-          <button className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
+          <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: users[0]?._id || '' }); setFormError(''); setShowForm(true); }}>+ Add Record</button>
+          <button type="button" className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
+          <button type="button" className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
         </div>
+        <p className="section-subtitle">
+          View and manage all gift card records. Select one or more records to update their payment status in bulk.
+        </p>
       </div>
 
-      {selected.size > 0 && (
-        <div className="bulk-action-bar">
-          <span>{selected.size} record(s) selected</span>
+      {!loading && records.length > 0 && (
+        <div className={`bulk-action-bar ${selected.size === 0 ? 'bulk-action-bar-empty' : ''}`}>
+          {selected.size > 0 ? (
+            <span className="bulk-action-count">{selected.size} record(s) selected</span>
+          ) : (
+            <span className="bulk-action-count">Select records to perform bulk actions</span>
+          )}
           <div className="bulk-action-buttons">
-            <button className="btn btn-success btn-sm" onClick={handleBulkPay}>Mark Selected as Paid Back</button>
-            <button className="btn btn-outline btn-sm" onClick={handleBulkUndo}>Undo Selected</button>
-            <button className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())}>Clear Selection</button>
+            <button type="button" className="btn btn-success btn-sm" onClick={handleBulkPay} disabled={selected.size === 0}>Mark Selected as Paid Back</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={handleBulkUndo} disabled={selected.size === 0}>Undo Selected</button>
+            {selected.size > 0 && (
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())}>Clear Selection</button>
+            )}
           </div>
         </div>
       )}
+      {loading && <div className="bulk-action-bar bulk-action-bar-empty"><span className="bulk-action-count">Loading records...</span></div>}
 
       <div className="card">
         <div className="filter-bar">
@@ -510,10 +568,19 @@ function AdminRecords() {
         ) : (
           <>
             <div className="table-container">
+              <p className="results-count" role="status">Showing <strong>{records.length}</strong> of <strong>{pagination.total}</strong> record(s)</p>
               <table className="table table-compact records-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '40px' }}><input type="checkbox" checked={selected.size === records.length && records.length > 0} onChange={toggleSelectAll} /></th>
+                    <th style={{ width: '40px' }}>
+                      <input
+                        type="checkbox"
+                        ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < records.length; }}
+                        checked={selected.size === records.length && records.length > 0}
+                        onChange={toggleSelectAll}
+                        aria-label="Select all records on this page"
+                      />
+                    </th>
                     <th>User</th>
                     <th>Gift Card</th>
                     <th>Amount</th>
@@ -546,7 +613,7 @@ function AdminRecords() {
                           ) : (
                             <button className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
                           )}
-                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
+                          <button className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
                         </div>
                       </td>
                     </tr>
@@ -597,7 +664,7 @@ function AdminRecords() {
                     ) : (
                       <button className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
                     )}
-                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
+                    <button className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
                   </div>
                 </div>
               ))}
@@ -693,6 +760,8 @@ function AdminUsers() {
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
 
+  useModalScrollLock(showForm || Boolean(resetPasswordUser));
+
   const fetchUsers = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -767,7 +836,10 @@ function AdminUsers() {
     <div>
       <div className="section-header">
         <h2 className="section-title">User Management</h2>
-        <button className="btn btn-primary" onClick={() => { setEditingUser(null); setFormData({ name: '', email: '', password: '' }); setShowForm(true); }}>+ Add User</button>
+        <button type="button" className="btn btn-primary" onClick={() => { setEditingUser(null); setFormData({ name: '', email: '', password: '' }); setShowForm(true); }}>+ Add User</button>
+        <p className="section-subtitle">
+          Create, edit, or manage access for users. Disabling a user prevents them from logging in.
+        </p>
       </div>
 
       <div className="card">
@@ -803,7 +875,7 @@ function AdminUsers() {
                 <button className="btn btn-outline btn-sm" onClick={() => { setEditingUser(u); setFormData({ name: u.name, email: u.email, password: '' }); setShowForm(true); }}>Edit</button>
                 <button className="btn btn-outline btn-sm" onClick={() => handleToggleActive(u)}>{u.active ? 'Disable' : 'Enable'}</button>
                 <button className="btn btn-outline btn-sm" onClick={() => { setResetPasswordUser(u); setNewPassword(''); }}>Reset Password</button>
-                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(u)}>Delete</button>
+                <button className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(u)}>Delete</button>
               </div>
             </div>
           ))
@@ -879,6 +951,8 @@ function AdminAudit() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useModalScrollLock(Boolean(pendingDelete) || pendingBulkDelete);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -996,14 +1070,23 @@ function AdminAudit() {
     <div>
       <div className="section-header">
         <h2 className="section-title">Audit History</h2>
+        <p className="section-subtitle">
+          A chronological record of all actions taken in the system. Use the filter to focus on specific activity.
+        </p>
       </div>
 
-      {selected.size > 0 && (
-        <div className="bulk-action-bar">
-          <span>{selected.size} audit log(s) selected</span>
+      {!loading && logs.length > 0 && (
+        <div className={`bulk-action-bar ${selected.size === 0 ? 'bulk-action-bar-empty' : ''}`}>
+          {selected.size > 0 ? (
+            <span className="bulk-action-count">{selected.size} audit log(s) selected</span>
+          ) : (
+            <span className="bulk-action-count">Select audit logs to delete them</span>
+          )}
           <div className="bulk-action-buttons">
-            <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={deleting}>Delete Selected</button>
-            <button className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())} disabled={deleting}>Clear Selection</button>
+            <button type="button" className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={deleting || selected.size === 0}>Delete Selected</button>
+            {selected.size > 0 && (
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())} disabled={deleting}>Clear Selection</button>
+            )}
           </div>
         </div>
       )}
@@ -1046,11 +1129,11 @@ function AdminAudit() {
                   <td>{log.performedBy?.name || 'System'}</td>
                   <td><span className="badge badge-neutral">{log.targetType === 'user' ? 'User' : 'Record'}</span></td>
                   <td className="text-muted text-xs audit-details-cell">
-                    <span>{formatDetails(log.metadata)}</span>
+                    <span className="audit-details-text">{formatDetails(log.metadata)}</span>
                   </td>
                   <td>
                     <div className="action-buttons">
-                      <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(log)} disabled={deleting}>Delete</button>
+                      <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => setPendingDelete(log)} disabled={deleting}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -1102,7 +1185,7 @@ function AdminAudit() {
                 )}
               </div>
               <div className="mobile-record-actions">
-                <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(log)} disabled={deleting}>Delete</button>
+                <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => setPendingDelete(log)} disabled={deleting}>Delete</button>
               </div>
             </div>
           ))}

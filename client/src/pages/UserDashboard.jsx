@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
+import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
 export default function UserDashboard() {
@@ -22,6 +24,8 @@ export default function UserDashboard() {
     giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: ''
   });
   const [formError, setFormError] = useState('');
+
+  useModalScrollLock(showForm);
 
   const fetchData = useCallback(async () => {
     try {
@@ -132,30 +136,51 @@ export default function UserDashboard() {
 
       <div className="main-content">
         <h2 className="section-title">My Dashboard</h2>
+        <p className="section-subtitle">
+          Overview of your gift card records and payment status against the gift card company.
+        </p>
 
         <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-label">Total Cards</div>
+          <div className="stat-card stat-card-records">
+            <div className="stat-card-head">
+              <div className="stat-label">Total Cards</div>
+              <span className="stat-card-icon" aria-hidden="true"><CreditCard size={16} /></span>
+            </div>
             <div className="stat-value">{stats.totalRecords || 0}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Total GC Amount</div>
+          <div className="stat-card stat-card-gc">
+            <div className="stat-card-head">
+              <div className="stat-label">Total GC Amount</div>
+              <span className="stat-card-icon" aria-hidden="true"><Wallet size={16} /></span>
+            </div>
             <div className="stat-value">{formatCurrency(stats.totalAmount)}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Total Paid</div>
+          <div className="stat-card stat-card-paid-amt">
+            <div className="stat-card-head">
+              <div className="stat-label">Total Paid</div>
+              <span className="stat-card-icon" aria-hidden="true"><Receipt size={16} /></span>
+            </div>
             <div className="stat-value text-primary">{formatCurrency(stats.totalPaid)}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Pending Amount</div>
+          <div className="stat-card stat-card-pending-amt">
+            <div className="stat-card-head">
+              <div className="stat-label">Pending Amount</div>
+              <span className="stat-card-icon" aria-hidden="true"><Clock size={16} /></span>
+            </div>
             <div className="stat-value text-warning">{formatCurrency(stats.pendingAmount)}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Paid Back Amount</div>
+          <div className="stat-card stat-card-paidback">
+            <div className="stat-card-head">
+              <div className="stat-label">Paid Back Amount</div>
+              <span className="stat-card-icon" aria-hidden="true"><Banknote size={16} /></span>
+            </div>
             <div className="stat-value text-success">{formatCurrency(stats.paidBackAmount)}</div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Pending Cards</div>
+          <div className="stat-card stat-card-pending">
+            <div className="stat-card-head">
+              <div className="stat-label">Pending Cards</div>
+              <span className="stat-card-icon" aria-hidden="true"><Hourglass size={16} /></span>
+            </div>
             <div className="stat-value text-warning">{stats.pendingCount || 0}</div>
           </div>
         </div>
@@ -163,7 +188,7 @@ export default function UserDashboard() {
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">My Gift Cards</h2>
-            <button className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' }); setFormError(''); setShowForm(true); }}>
+            <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' }); setFormError(''); setShowForm(true); }}>
               + Add Record
             </button>
           </div>
@@ -202,6 +227,7 @@ export default function UserDashboard() {
             </div>
           ) : (
             <>
+              <p className="results-count" role="status">Showing <strong>{records.length}</strong> of <strong>{pagination.total}</strong> record(s)</p>
               <div className="table-container">
                 <table className="table user-records-table">
                   <thead>
@@ -226,8 +252,8 @@ export default function UserDashboard() {
                         <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
                         <td>
                           <div className="action-buttons">
-                            <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
-                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
+                            <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
                           </div>
                         </td>
                       </tr>
@@ -254,8 +280,8 @@ export default function UserDashboard() {
                     </div>
                     {r.notes && <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--gray-600)' }}>Note: {r.notes}</div>}
                     <div className="mobile-record-actions">
-                      <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
+                      <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
                     </div>
                   </div>
                 ))}
