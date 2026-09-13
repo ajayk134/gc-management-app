@@ -9,7 +9,7 @@ router.use(auth, adminOnly);
 
 router.get('/csv', async (req, res) => {
   try {
-    const { userId, status, startDate, endDate, userIds } = req.query;
+    const { userId, status, startDate, endDate, userIds, shared } = req.query;
     
     const filter = {};
     
@@ -21,6 +21,12 @@ router.get('/csv', async (req, res) => {
     }
 
     if (status) filter.paymentStatus = status;
+
+    if (shared === 'shared') {
+      filter.shared = true;
+    } else if (shared === 'unshared') {
+      filter.shared = { $ne: true };
+    }
 
     if (startDate || endDate) {
       filter.createdAt = {};
@@ -80,7 +86,7 @@ router.get('/csv', async (req, res) => {
 router.get('/excel', async (req, res) => {
   try {
     const XLSX = require('xlsx');
-    const { userId, status, startDate, endDate, userIds } = req.query;
+    const { userId, status, startDate, endDate, userIds, shared } = req.query;
     
     const filter = {};
     
@@ -92,6 +98,12 @@ router.get('/excel', async (req, res) => {
     }
 
     if (status) filter.paymentStatus = status;
+
+    if (shared === 'shared') {
+      filter.shared = true;
+    } else if (shared === 'unshared') {
+      filter.shared = { $ne: true };
+    }
 
     if (startDate || endDate) {
       filter.createdAt = {};

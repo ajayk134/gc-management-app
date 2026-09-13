@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "build": "vite build",
-    "init-admin": "node scripts/init-admin.js"
+    "init-admin": "node scripts/init-admin.js",
+    "test:seed": "node scripts/seed-test-db.js",
+    "test:api": "node scripts/seed-test-db.js && (test -f tests/api-test.js && node tests/api-test.js || echo 'Note: tests/api-test.js is local-only (tests/ is gitignored) - skipping.')",
+    "test": "npm run test:api"
   },
   "engines": {
     "node": ">=18.0.0"

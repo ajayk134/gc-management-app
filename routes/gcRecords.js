@@ -12,7 +12,7 @@ router.use(auth);
 // Get GC records (admin sees all, user sees own)
 router.get('/', async (req, res) => {
   try {
-    const { search, status, startDate, endDate, sort, order, page = 1, limit = 50, userId } = req.query;
+    const { search, status, startDate, endDate, sort, order, page = 1, limit = 50, userId, shared } = req.query;
     
     const filter = {};
     
@@ -24,6 +24,15 @@ router.get('/', async (req, res) => {
 
     if (status) {
       filter.paymentStatus = status;
+    }
+
+    // Shared filter: "shared" -> only shared=true, "unshared" -> only records
+    // where shared is false or missing (legacy records behave as unshared).
+    // Any other value (including absent/empty) -> no filtering.
+    if (shared === 'shared') {
+      filter.shared = true;
+    } else if (shared === 'unshared') {
+      filter.shared = { $ne: true };
     }
 
     if (startDate || endDate) {
@@ -497,8 +506,12 @@ router.post('/:id/share', adminOnly, async (req, res) => {
     await record.populate('user', 'name email');
 
     await logAction(boolShared ? 'record_shared' : 'record_unshared', req.userId, 'record', record._id, {
+      recordId: record._id.toString(),
       giftCard: record.giftCard,
-      shared: boolShared
+      provider: record.provider,
+      shared: boolShared,
+      ownerUserId: record.user?._id ? record.user._id.toString() : null,
+      ownerName: record.user?.name || null
     }, req.ip);
 
     res.json({ record });
@@ -519,6 +532,8 @@ router.post('/bulk-share', adminOnly, async (req, res) => {
     }
 
     const results = { success: [], skipped: [], failed: [] };
+    const affectedOwners = {};
+    const affectedGiftCards = [];
 
     for (const id of recordIds) {
       try {
@@ -544,17 +559,28 @@ router.post('/bulk-share', adminOnly, async (req, res) => {
         await record.save();
 
         results.success.push(id);
+        if (record.user) {
+          if (!affectedOwners[record.user]) affectedOwners[record.user] = [];
+        }
+        affectedGiftCards.push(record.giftCard);
       } catch (err) {
         results.failed.push({ id, error: err.message });
       }
     }
 
+    const ownerNames = await User.find({ _id: { $in: Object.keys(affectedOwners) } }).select('_id name');
+
     if (results.success.length > 0) {
       await logAction(boolShared ? 'bulk_shared' : 'bulk_unshared', req.userId, 'record', results.success[0], {
+        recordIds: results.success,
         count: results.success.length,
+        skipped: results.skipped,
+        failed: results.failed,
         skippedCount: results.skipped.length,
         failedCount: results.failed.length,
-        recordIds: results.success
+        owners: ownerNames.map(u => ({ userId: u._id.toString(), name: u.name })),
+        giftCards: affectedGiftCards,
+        shared: boolShared
       }, req.ip);
     }
 

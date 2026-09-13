@@ -294,6 +294,7 @@ function AdminRecords() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sharedFilter, setSharedFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
@@ -323,6 +324,7 @@ function AdminRecords() {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
       if (statusFilter) params.set('status', statusFilter);
+      if (sharedFilter) params.set('shared', sharedFilter);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
       if (userFilter) params.set('userId', userFilter);
@@ -338,7 +340,7 @@ function AdminRecords() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, startDate, endDate, page, userFilter]);
+  }, [search, statusFilter, sharedFilter, startDate, endDate, page, userFilter]);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
@@ -565,6 +567,7 @@ function AdminRecords() {
       const params = new URLSearchParams();
       if (userFilter) params.set('userId', userFilter);
       if (statusFilter) params.set('status', statusFilter);
+      if (sharedFilter) params.set('shared', sharedFilter);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
 
@@ -623,6 +626,11 @@ function AdminRecords() {
             <option value="pending">Pending</option>
             <option value="paid_back">Paid Back</option>
           </select>
+          <select className="form-select" value={sharedFilter} onChange={e => { setSharedFilter(e.target.value); setPage(1); }} aria-label="Filter by sharing status">
+            <option value="">All</option>
+            <option value="shared">Shared</option>
+            <option value="unshared">Unshared</option>
+          </select>
           <select className="form-select" value={userFilter} onChange={e => { setUserFilter(e.target.value); setPage(1); }}>
             <option value="">All Users</option>
             {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
@@ -635,7 +643,7 @@ function AdminRecords() {
             <label className="form-label">To</label>
             <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
           </div>
-          <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
+          <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setSharedFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
         </div>
 
         {loading ? <div className="loading"><div className="spinner"></div></div> : records.length === 0 ? (

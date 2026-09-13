@@ -31,17 +31,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting. Production defaults: 200 requests / 15 min globally and
+// 20 login attempts / 15 min. When NODE_ENV=test (a local, test-only
+// configuration that never runs in production) the limits are raised so
+// automated test suites, which legitimately repeat logins and API calls,
+// do not trip the production-style limits. Production security is unchanged.
+const isTestEnv = process.env.NODE_ENV === 'test';
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX || 200),
+  max: Number(process.env.RATE_LIMIT_MAX || (isTestEnv ? 100000 : 200)),
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/api/', limiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 20),
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || (isTestEnv ? 100000 : 20)),
   message: { error: 'Too many login attempts, please try again later.' }
 });
 
