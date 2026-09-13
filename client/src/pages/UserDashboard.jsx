@@ -3,7 +3,8 @@ import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
-import { formatCurrency, formatDate, getStatusColor, getStatusLabel, effectivePaid, hasAdjustment } from '../utils/format';
+import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
+import PaidAmount from '../components/PaidAmount';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -254,8 +255,7 @@ export default function UserDashboard() {
                         <td>{r.provider || '—'}</td>
                         <td>{formatCurrency(r.giftCardAmount)}</td>
                         <td>
-                          {formatCurrency(effectivePaid(r))}
-                          {hasAdjustment(r) && <div className="text-xs amount-adjusted">Adjusted</div>}
+                          <PaidAmount record={r} />
                         </td>
                         <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                         <td>{formatDate(r.createdAt)}</td>
@@ -288,10 +288,7 @@ export default function UserDashboard() {
                     <div className="mobile-record-details">
                       <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                       <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
-                      <div>
-                        <span className="text-muted">Paid:</span> {formatCurrency(effectivePaid(r))}
-                        {hasAdjustment(r) && <span className="amount-adjusted"> (Adjusted)</span>}
-                      </div>
+                      <div className="paid-mobile-row"><span className="text-muted">Paid:</span> <PaidAmount record={r} /></div>
                       <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                       <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                     </div>
