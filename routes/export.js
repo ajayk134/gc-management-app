@@ -1,6 +1,7 @@
 const express = require('express');
 const GCRecord = require('../models/GCRecord');
 const { auth, adminOnly } = require('../middleware/auth');
+const { effectivePaid, hasAdjustment } = require('../utils/effectivePaid');
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ router.get('/csv', async (req, res) => {
       .populate('user', 'name email')
       .sort({ createdAt: -1 });
 
-    const csvHeader = 'User,Email,Gift Card,Gift Card PIN,Gift Card Amount,Provider,Adjusted Amount,Paid,Payment Status,Shared,Submitted At,Paid Back At,Notes,Admin Note\n';
+    const csvHeader = 'User,Email,Gift Card,Gift Card PIN,Gift Card Amount,Provider,Adjusted Amount,Effective Paid,Paid (Original),Payment Status,Shared,Submitted At,Paid Back At,Notes,Admin Note\n';
     
     const csvRows = records.map(r => {
       const userName = r.user?.name || 'Unknown';
@@ -54,7 +55,8 @@ router.get('/csv', async (req, res) => {
         escapeCsv(r.giftCardPin),
         escapeCsv(r.giftCardAmount),
         escapeCsv(r.provider),
-        escapeCsv(r.adjustedAmount !== undefined && r.adjustedAmount !== null ? r.adjustedAmount : ''),
+        escapeCsv(hasAdjustment(r) ? r.adjustedAmount : ''),
+        escapeCsv(effectivePaid(r)),
         escapeCsv(r.paid),
         escapeCsv(r.paymentStatus),
         escapeCsv(r.shared ? 'yes' : 'no'),
@@ -109,8 +111,9 @@ router.get('/excel', async (req, res) => {
       'Gift Card PIN': r.giftCardPin,
       'Gift Card Amount': r.giftCardAmount,
       'Provider': r.provider || '',
-      'Adjusted Amount': r.adjustedAmount !== undefined && r.adjustedAmount !== null ? r.adjustedAmount : '',
-      'Paid': r.paid,
+      'Adjusted Amount': hasAdjustment(r) ? r.adjustedAmount : '',
+      'Effective Paid': effectivePaid(r),
+      'Paid (Original)': r.paid,
       'Payment Status': r.paymentStatus,
       'Shared': r.shared ? 'yes' : 'no',
       'Submitted At': r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : '',

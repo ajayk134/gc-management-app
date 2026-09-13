@@ -3,7 +3,7 @@ import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt,
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
-import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
+import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel, effectivePaid, hasAdjustment } from '../utils/format';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -116,9 +116,6 @@ function AdminStats() {
   return (
     <div>
       <h2 className="section-title">Admin Dashboard</h2>
-      <p className="section-subtitle">
-        Track gift card records, pending payments, and paid-back amounts across all users. Use the filters below to narrow the view.
-      </p>
       
       <div className="filter-bar">
         <select className="form-select" value={userFilter} onChange={e => setUserFilter(e.target.value)}>
@@ -593,9 +590,6 @@ function AdminRecords() {
           <button type="button" className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
           <button type="button" className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
         </div>
-        <p className="section-subtitle">
-          View and manage all gift card records. Select one or more records to update their payment status in bulk.
-        </p>
       </div>
 
       {!loading && records.length > 0 && (
@@ -686,13 +680,11 @@ function AdminRecords() {
                       </td>
                       <td><strong>{r.giftCard}</strong></td>
                       <td>{r.provider || '—'}</td>
+                      <td>{formatCurrency(r.giftCardAmount)}</td>
                       <td>
-                        {formatCurrency(r.giftCardAmount)}
-                        {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
-                          <div className="text-xs amount-adjusted">Adjusted: {formatCurrency(r.adjustedAmount)}</div>
-                        )}
+                        {formatCurrency(effectivePaid(r))}
+                        {hasAdjustment(r) && <div className="text-xs amount-adjusted">Adjusted</div>}
                       </td>
-                      <td>{formatCurrency(r.paid)}</td>
                       <td>
                         <input
                           type="checkbox"
@@ -713,7 +705,7 @@ function AdminRecords() {
                           ) : (
                             <button type="button" className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
                           )}
-                          <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
+                          <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
                         </div>
                       </td>
@@ -758,10 +750,10 @@ function AdminRecords() {
                   <div className="mobile-record-details">
                     <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                     <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
-                    {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
-                      <div><span className="text-muted">Adjusted:</span> <span className="amount-adjusted">{formatCurrency(r.adjustedAmount)}</span></div>
-                    )}
-                    <div><span className="text-muted">Paid:</span> {formatCurrency(r.paid)}</div>
+                    <div>
+                      <span className="text-muted">Paid:</span> {formatCurrency(effectivePaid(r))}
+                      {hasAdjustment(r) && <span className="amount-adjusted"> (Adjusted)</span>}
+                    </div>
                     <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                     <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                   </div>
@@ -831,7 +823,7 @@ function AdminRecords() {
                         <option value={formData.provider}>{formData.provider}</option>
                       )}
                     </select>
-                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setAddingProvider(!addingProvider)}>
+                    <button type="button" className="btn btn-outline" onClick={() => setAddingProvider(!addingProvider)}>
                       {addingProvider ? 'Done' : 'Manage'}
                     </button>
                   </div>
@@ -839,7 +831,7 @@ function AdminRecords() {
                     <div className="provider-manage">
                       <div className="provider-add-row">
                         <input type="text" className="form-input" placeholder="New provider name..." value={newProvider} onChange={e => setNewProvider(e.target.value)} maxLength={60} />
-                        <button type="button" className="btn btn-primary btn-sm" onClick={handleAddProvider}>Add</button>
+                        <button type="button" className="btn btn-primary" onClick={handleAddProvider}>Add</button>
                       </div>
                       {providers.filter(p => p.isCustom).length > 0 && (
                         <ul className="provider-custom-list">
@@ -870,17 +862,17 @@ function AdminRecords() {
                 </div>
                 {editingRecord && (
                   <div className="form-group">
-                    <label className="form-label">Adjusted / Final Amount (₹)</label>
+                    <label className="form-label">Adjusted Paid Amount (₹)</label>
                     <div className="provider-select-row">
-                      <input type="number" className="form-input" value={formData.adjustedAmount} onChange={e => setFormData({...formData, adjustedAmount: e.target.value})} min="0" step="0.01" placeholder="Leave empty to use the original amount" />
+                      <input type="number" className="form-input" value={formData.adjustedAmount} onChange={e => setFormData({...formData, adjustedAmount: e.target.value})} min="0" step="0.01" placeholder="Override paid amount for totals (optional)" />
                       {formData.adjustedAmount !== '' && (
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormData({...formData, adjustedAmount: '' })}>Clear</button>
+                        <button type="button" className="btn btn-outline" onClick={() => setFormData({...formData, adjustedAmount: '' })}>Clear</button>
                       )}
                     </div>
                     {editingRecord.adjustedAmount !== undefined && editingRecord.adjustedAmount !== null && (
-                      <small className="form-hint">Set to {formatCurrency(editingRecord.adjustedAmount)}{editingRecord.adjustedBy && ` by ${editingRecord.adjustedBy.name}`}{editingRecord.adjustedAt ? ` on ${formatDateTime(editingRecord.adjustedAt)}` : ''}.</small>
+                      <small className="form-hint">Currently set to {formatCurrency(editingRecord.adjustedAmount)}{editingRecord.adjustedBy && ` by ${editingRecord.adjustedBy.name}`}{editingRecord.adjustedAt ? ` on ${formatDateTime(editingRecord.adjustedAt)}` : ''}.</small>
                     )}
-                    <small className="form-hint">Users see both the original and this final amount. The original is never overwritten.</small>
+                    <small className="form-hint">Overrides the effective Paid amount for all totals and calculations. The original Paid value stays stored. Clear to revert.</small>
                   </div>
                 )}
                 <div className="form-group">
@@ -1007,9 +999,6 @@ function AdminUsers() {
       <div className="section-header">
         <h2 className="section-title">User Management</h2>
         <button type="button" className="btn btn-primary" onClick={() => { setEditingUser(null); setFormData({ name: '', email: '', password: '' }); setShowForm(true); }}>+ Add User</button>
-        <p className="section-subtitle">
-          Create, edit, or manage access for users. Disabling a user prevents them from logging in.
-        </p>
       </div>
 
       <div className="card">
@@ -1243,9 +1232,6 @@ function AdminAudit() {
     <div>
       <div className="section-header">
         <h2 className="section-title">Audit History</h2>
-        <p className="section-subtitle">
-          A chronological record of all actions taken in the system. Use the filter to focus on specific activity.
-        </p>
       </div>
 
       {!loading && logs.length > 0 && (

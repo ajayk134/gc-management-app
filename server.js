@@ -98,7 +98,7 @@ if (!MONGODB_URI) {
 }
 
 mongoose.connect(MONGODB_URI, {
-  dbName: 'gc_management'
+  dbName: process.env.DB_NAME || 'gc_management'
 }).then(async () => {
   console.log('Connected to MongoDB');
   
@@ -106,15 +106,14 @@ mongoose.connect(MONGODB_URI, {
   const User = require('./models/User');
   const adminExists = await User.findOne({ role: 'admin' });
   if (!adminExists) {
-    const bcrypt = require('bcryptjs');
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const adminEmail = process.env.ADMIN_EMAIL || 'sathvikak2002@gmail.com';
     const adminName = process.env.ADMIN_NAME || 'Administrator';
-    
+
     await User.create({
       name: adminName,
       email: adminEmail,
-      password: await bcrypt.hash(adminPassword, 12),
+      password: adminPassword,
       role: 'admin',
       active: true
     });

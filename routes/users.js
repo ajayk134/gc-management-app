@@ -3,6 +3,7 @@ const User = require('../models/User');
 const GCRecord = require('../models/GCRecord');
 const { auth, adminOnly } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { effectivePaidExpr } = require('../utils/effectivePaid');
 
 const router = express.Router();
 
@@ -36,12 +37,12 @@ router.get('/', async (req, res) => {
             _id: null,
             totalRecords: { $sum: 1 },
             totalAmount: { $sum: '$giftCardAmount' },
-            totalPaid: { $sum: '$paid' },
+            totalPaid: { $sum: effectivePaidExpr },
             pendingAmount: {
-              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, '$paid', 0] }
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, effectivePaidExpr, 0] }
             },
             paidBackAmount: {
-              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, '$paid', 0] }
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, effectivePaidExpr, 0] }
             },
             pendingCount: {
               $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0] }

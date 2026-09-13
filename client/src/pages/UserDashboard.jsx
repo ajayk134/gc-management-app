@@ -3,7 +3,7 @@ import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import api from '../utils/api';
-import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
+import { formatCurrency, formatDate, getStatusColor, getStatusLabel, effectivePaid, hasAdjustment } from '../utils/format';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -141,9 +141,6 @@ export default function UserDashboard() {
 
       <div className="main-content">
         <h2 className="section-title">My Dashboard</h2>
-        <p className="section-subtitle">
-          Overview of your gift card records and payment status against the gift card company.
-        </p>
 
         <div className="stats-grid">
           <div className="stat-card stat-card-records">
@@ -255,13 +252,11 @@ export default function UserDashboard() {
                           {r.shared && <span className="badge badge-shared">Shared</span>}
                         </td>
                         <td>{r.provider || '—'}</td>
+                        <td>{formatCurrency(r.giftCardAmount)}</td>
                         <td>
-                          {formatCurrency(r.giftCardAmount)}
-                          {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
-                            <div className="text-xs amount-adjusted">Adjusted: {formatCurrency(r.adjustedAmount)}</div>
-                          )}
+                          {formatCurrency(effectivePaid(r))}
+                          {hasAdjustment(r) && <div className="text-xs amount-adjusted">Adjusted</div>}
                         </td>
-                        <td>{formatCurrency(r.paid)}</td>
                         <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                         <td>{formatDate(r.createdAt)}</td>
                         <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
@@ -293,10 +288,10 @@ export default function UserDashboard() {
                     <div className="mobile-record-details">
                       <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                       <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
-                      {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
-                        <div><span className="text-muted">Adjusted:</span> <span className="amount-adjusted">{formatCurrency(r.adjustedAmount)}</span></div>
-                      )}
-                      <div><span className="text-muted">Paid:</span> {formatCurrency(r.paid)}</div>
+                      <div>
+                        <span className="text-muted">Paid:</span> {formatCurrency(effectivePaid(r))}
+                        {hasAdjustment(r) && <span className="amount-adjusted"> (Adjusted)</span>}
+                      </div>
                       <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                       <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                     </div>

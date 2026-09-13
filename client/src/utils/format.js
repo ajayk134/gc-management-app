@@ -44,3 +44,9 @@ export const getStatusLabel = (status) => {
   if (status === 'paid_back') return 'Paid Back';
   return status;
 };
+
+// Effective paid = adjustedAmount IF an admin adjustment exists, otherwise paid.
+export const hasAdjustment = (record) =>
+  !!record && record.adjustedAmount !== undefined && record.adjustedAmount !== null;
+
+export const effectivePaid = (record) => (hasAdjustment(record) ? record.adjustedAmount : record.paid);

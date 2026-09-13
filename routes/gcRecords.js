@@ -3,6 +3,7 @@ const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
 const { auth, adminOnly } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { effectivePaid } = require('../utils/effectivePaid');
 
 const router = express.Router();
 
@@ -317,7 +318,7 @@ router.post('/:id/pay', adminOnly, async (req, res) => {
 
     await logAction('record_paid_back', req.userId, 'record', record._id, {
       giftCard: record.giftCard,
-      amount: record.paid,
+      amount: effectivePaid(record),
       userName: record.user.name
     }, req.ip);
 

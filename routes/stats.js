@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
 const { auth, adminOnly, userOnly } = require('../middleware/auth');
+const { effectivePaidExpr } = require('../utils/effectivePaid');
 
 const router = express.Router();
 
@@ -26,12 +27,12 @@ router.get('/user', userOnly, async (req, res) => {
           _id: null,
           totalRecords: { $sum: 1 },
           totalAmount: { $sum: '$giftCardAmount' },
-          totalPaid: { $sum: '$paid' },
+          totalPaid: { $sum: effectivePaidExpr },
           pendingAmount: {
-            $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, '$paid', 0] }
+            $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, effectivePaidExpr, 0] }
           },
           paidBackAmount: {
-            $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, '$paid', 0] }
+            $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, effectivePaidExpr, 0] }
           },
           pendingCount: {
             $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0] }
@@ -79,12 +80,12 @@ router.get('/admin', adminOnly, async (req, res) => {
             _id: null,
             totalRecords: { $sum: 1 },
             totalAmount: { $sum: '$giftCardAmount' },
-            totalPaid: { $sum: '$paid' },
+            totalPaid: { $sum: effectivePaidExpr },
             pendingAmount: {
-              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, '$paid', 0] }
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, effectivePaidExpr, 0] }
             },
             paidBackAmount: {
-              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, '$paid', 0] }
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, effectivePaidExpr, 0] }
             },
             pendingCount: {
               $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0] }
@@ -102,12 +103,12 @@ router.get('/admin', adminOnly, async (req, res) => {
             _id: '$user',
             totalRecords: { $sum: 1 },
             totalAmount: { $sum: '$giftCardAmount' },
-            totalPaid: { $sum: '$paid' },
+            totalPaid: { $sum: effectivePaidExpr },
             pendingAmount: {
-              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, '$paid', 0] }
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, effectivePaidExpr, 0] }
             },
             paidBackAmount: {
-              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, '$paid', 0] }
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, effectivePaidExpr, 0] }
             },
             pendingCount: {
               $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0] }
