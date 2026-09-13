@@ -288,7 +288,7 @@ export default function UserDashboard() {
                     <div className="mobile-record-details">
                       <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                       <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
-                      <div className="paid-mobile-row"><span className="text-muted">Paid:</span> <PaidAmount record={r} /></div>
+                      <div className="paid-mobile-cell"><PaidAmount record={r} /></div>
                       <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                       <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                     </div>

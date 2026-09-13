@@ -664,7 +664,6 @@ function AdminRecords() {
                     <th>Provider</th>
                     <th>Amount</th>
                     <th>Paid</th>
-                    <th>Shared</th>
                     <th>Status</th>
                     <th>Submitted</th>
                     <th>Paid Back</th>
@@ -684,15 +683,6 @@ function AdminRecords() {
                       <td>{formatCurrency(r.giftCardAmount)}</td>
                       <td>
                         <PaidAmount record={r} />
-                      </td>
-                      <td>
-                        <input
-                          type="checkbox"
-                          className="checkbox-shared"
-                          checked={Boolean(r.shared)}
-                          onChange={() => handleToggleShare(r)}
-                          aria-label={r.shared ? 'Unshare this record' : 'Share this record'}
-                        />
                       </td>
                       <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                       <td>{formatDate(r.createdAt)}</td>
@@ -750,7 +740,7 @@ function AdminRecords() {
                   <div className="mobile-record-details">
                     <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                     <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
-                    <div className="paid-mobile-row"><span className="text-muted">Paid:</span> <PaidAmount record={r} /></div>
+                    <div className="paid-mobile-cell"><PaidAmount record={r} /></div>
                     <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                     <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                   </div>
