@@ -188,15 +188,14 @@ export default function UserDashboard() {
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title">My Gift Cards</h2>
-            <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}>
-              + Add Record
-            </button>
-          </div>
+        <div className="section-header">
+          <h2 className="section-title">My Gift Cards</h2>
+          <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}>
+            + Add Record
+          </button>
+        </div>
 
-          <div className="filter-bar">
+        <div className="filter-bar">
             <div className="search-input">
               <input
                 type="text"
@@ -310,7 +309,6 @@ export default function UserDashboard() {
               )}
             </>
           )}
-        </div>
       </div>
 
       {showForm && (

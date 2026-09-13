@@ -200,10 +200,8 @@ function AdminStats() {
       </div>
 
       {stats.perUser && stats.perUser.length > 0 && (
-        <div className="card per-user-section">
-          <div className="card-header">
-            <h3 className="card-title">Per-User Statistics</h3>
-          </div>
+        <>
+          <h3 className="section-subtitle">Per-User Statistics</h3>
           <div className="table-container">
             <table className="table per-user-table">
               <thead>
@@ -283,7 +281,7 @@ function AdminStats() {
               </div>
             ))}
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -596,6 +594,35 @@ function AdminRecords() {
         </div>
       </div>
 
+      <div className="filter-bar">
+        <div className="search-input">
+          <input type="text" className="form-input" placeholder="Search card, notes..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+        </div>
+        <select className="form-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="paid_back">Paid Back</option>
+        </select>
+        <select className="form-select" value={sharedFilter} onChange={e => { setSharedFilter(e.target.value); setPage(1); }} aria-label="Filter by sharing status">
+          <option value="">All</option>
+          <option value="shared">Shared</option>
+          <option value="unshared">Unshared</option>
+        </select>
+        <select className="form-select" value={userFilter} onChange={e => { setUserFilter(e.target.value); setPage(1); }}>
+          <option value="">All Users</option>
+          {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+        </select>
+        <div className="filter-group">
+          <label className="form-label">From</label>
+          <input type="date" className="form-input form-input-date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} />
+        </div>
+        <div className="filter-group">
+          <label className="form-label">To</label>
+          <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
+        </div>
+        <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setSharedFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
+      </div>
+
       {!loading && records.length > 0 && (
         <div className={`bulk-action-bar ${selected.size === 0 ? 'bulk-action-bar-empty' : ''}`}>
           {selected.size > 0 ? (
@@ -616,36 +643,6 @@ function AdminRecords() {
       )}
       {loading && <div className="bulk-action-bar bulk-action-bar-empty"><span className="bulk-action-count">Loading records...</span></div>}
 
-      <div className="card">
-        <div className="filter-bar">
-          <div className="search-input">
-            <input type="text" className="form-input" placeholder="Search card, notes..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
-          </div>
-          <select className="form-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="paid_back">Paid Back</option>
-          </select>
-          <select className="form-select" value={sharedFilter} onChange={e => { setSharedFilter(e.target.value); setPage(1); }} aria-label="Filter by sharing status">
-            <option value="">All</option>
-            <option value="shared">Shared</option>
-            <option value="unshared">Unshared</option>
-          </select>
-          <select className="form-select" value={userFilter} onChange={e => { setUserFilter(e.target.value); setPage(1); }}>
-            <option value="">All Users</option>
-            {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
-          </select>
-          <div className="filter-group">
-            <label className="form-label">From</label>
-            <input type="date" className="form-input form-input-date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} />
-          </div>
-          <div className="filter-group">
-            <label className="form-label">To</label>
-            <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
-          </div>
-          <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setSharedFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
-        </div>
-
         {loading ? <div className="loading"><div className="spinner"></div></div> : records.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📋</div>
@@ -653,8 +650,8 @@ function AdminRecords() {
           </div>
         ) : (
           <>
+            <p className="results-count" role="status">Showing <strong>{records.length}</strong> of <strong>{pagination.total}</strong> record(s)</p>
             <div className="table-container">
-              <p className="results-count" role="status">Showing <strong>{records.length}</strong> of <strong>{pagination.total}</strong> record(s)</p>
               <table className="table table-compact records-table">
                 <thead>
                   <tr>
@@ -775,7 +772,6 @@ function AdminRecords() {
             )}
           </>
         )}
-      </div>
 
       {showForm && (
         <div className="modal-overlay" onClick={() => { setShowForm(false); setFormError(''); }}>
@@ -996,12 +992,11 @@ function AdminUsers() {
         <button type="button" className="btn btn-primary" onClick={() => { setEditingUser(null); setFormData({ name: '', email: '', password: '' }); setShowForm(true); }}>+ Add User</button>
       </div>
 
-      <div className="card">
-        <div className="filter-bar">
-          <div className="search-input">
-            <input type="text" className="form-input" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
+      <div className="filter-bar">
+        <div className="search-input">
+          <input type="text" className="form-input" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+      </div>
 
         {users.length === 0 ? (
           <div className="empty-state">
@@ -1034,7 +1029,6 @@ function AdminUsers() {
             </div>
           ))
         )}
-      </div>
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
@@ -1229,6 +1223,13 @@ function AdminAudit() {
         <h2 className="section-title">Audit History</h2>
       </div>
 
+      <div className="filter-bar">
+        <select className="form-select" value={actionFilter} onChange={e => { setActionFilter(e.target.value); setPage(1); }}>
+          <option value="">All Actions</option>
+          {Object.entries(actionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+      </div>
+
       {!loading && logs.length > 0 && (
         <div className={`bulk-action-bar ${selected.size === 0 ? 'bulk-action-bar-empty' : ''}`}>
           {selected.size > 0 ? (
@@ -1244,14 +1245,6 @@ function AdminAudit() {
           </div>
         </div>
       )}
-
-      <div className="card">
-        <div className="filter-bar">
-          <select className="form-select" value={actionFilter} onChange={e => { setActionFilter(e.target.value); setPage(1); }}>
-            <option value="">All Actions</option>
-            {Object.entries(actionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </select>
-        </div>
 
         <div className="table-container">
           <table className="table table-compact audit-table">
@@ -1358,7 +1351,6 @@ function AdminAudit() {
             <button disabled={page === pagination.pages || deleting} onClick={() => setPage(p => p + 1)}>Next</button>
           </div>
         )}
-      </div>
 
       <ConfirmModal
         open={Boolean(pendingDelete)}
