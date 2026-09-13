@@ -305,13 +305,18 @@ function AdminRecords() {
   const [editingRecord, setEditingRecord] = useState(null);
   const [users, setUsers] = useState([]);
   const [userFilter, setUserFilter] = useState('');
-  const [formData, setFormData] = useState({
-    giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: ''
-  });
+  const [providers, setProviders] = useState([]);
+  const [addingProvider, setAddingProvider] = useState(false);
+  const [newProvider, setNewProvider] = useState('');
+  const [pendingBulkShare, setPendingBulkShare] = useState(null);
+  const [bulkSharing, setBulkSharing] = useState(false);
+  const emptyForm = { giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: '', provider: 'Flipkart', adjustedAmount: '' };
+  const [formData, setFormData] = useState(emptyForm);
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
     api.get('/api/users').then(d => setUsers(d.users)).catch(() => {});
+    api.get('/api/providers').then(d => setProviders(d.providers || [])).catch(() => {});
   }, []);
 
   const fetchRecords = useCallback(async () => {
@@ -346,19 +351,26 @@ function AdminRecords() {
       const body = {
         ...formData,
         giftCardAmount: parseFloat(formData.giftCardAmount),
-        paid: parseFloat(formData.paid)
+        paid: parseFloat(formData.paid),
+        adjustedAmount: formData.adjustedAmount === '' ? null : parseFloat(formData.adjustedAmount)
       };
+      if (formData.adjustedAmount === '' && !editingRecord) {
+        delete body.adjustedAmount;
+      }
       if (editingRecord) {
         await api.put(`/api/gc-records/${editingRecord._id}`, body);
         toast.success('Record updated');
       } else {
+        delete body.adjustedAmount;
         await api.post('/api/gc-records', body);
         toast.success('Record created');
       }
       setShowForm(false);
       setEditingRecord(null);
-      setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: '' });
+      setFormData(emptyForm);
       setFormError('');
+      setAddingProvider(false);
+      setNewProvider('');
       fetchRecords();
     } catch (err) {
       if (err.message && err.message.includes('already been submitted')) {
@@ -377,10 +389,23 @@ function AdminRecords() {
       giftCardAmount: record.giftCardAmount,
       paid: record.paid,
       notes: record.notes || '',
-      userId: record.user?._id || ''
+      userId: record.user?._id || '',
+      provider: record.provider || 'Flipkart',
+      adjustedAmount: record.adjustedAmount !== undefined && record.adjustedAmount !== null ? record.adjustedAmount : ''
     });
     setFormError('');
     setShowForm(true);
+  };
+
+  const handleToggleShare = async (record) => {
+    const next = !record.shared;
+    try {
+      await api.post(`/api/gc-records/${record._id}/share`, { shared: next });
+      toast.success(next ? 'Record shared' : 'Record unshared');
+      fetchRecords();
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -432,7 +457,7 @@ function AdminRecords() {
   const [pendingBulkUndo, setPendingBulkUndo] = useState(false);
   const [bulkUndoing, setBulkUndoing] = useState(false);
 
-  useModalScrollLock(showForm || pendingBulkUndo);
+  useModalScrollLock(showForm || pendingBulkUndo || Boolean(pendingBulkShare));
 
   const handleBulkUndo = () => {
     if (selected.size === 0) return toast.error('Select records first');
@@ -461,6 +486,62 @@ function AdminRecords() {
     } finally {
       setBulkUndoing(false);
       setPendingBulkUndo(false);
+    }
+  };
+
+  const confirmBulkShare = async () => {
+    if (selected.size === 0) {
+      setPendingBulkShare(null);
+      return toast.error('Select records first');
+    }
+    const shared = pendingBulkShare === 'share';
+    setBulkSharing(true);
+    try {
+      const result = await api.post('/api/gc-records/bulk-share', { recordIds: [...selected], shared });
+      const results = result.results || {};
+      const successCount = Array.isArray(results.success) ? results.success.length : 0;
+      const skippedCount = Array.isArray(results.skipped) ? results.skipped.length : 0;
+      const failedCount = Array.isArray(results.failed) ? results.failed.length : 0;
+      toast.success(result.message || `${successCount} record(s) ${shared ? 'shared' : 'unshared'}`);
+      if (skippedCount > 0) toast(`${skippedCount} skipped (already in state)`);
+      if (failedCount > 0) toast.error(`${failedCount} failed`);
+      setSelected(new Set());
+      fetchRecords();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBulkSharing(false);
+      setPendingBulkShare(null);
+    }
+  };
+
+  const handleAddProvider = async () => {
+    const name = newProvider.trim();
+    if (!name) return toast.error('Enter a provider name');
+    if (name.length > 60) return toast.error('Provider name must be 60 characters or fewer');
+    try {
+      const data = await api.post('/api/providers', { name });
+      setProviders(prev => {
+        const next = prev.filter(p => p._id !== data.provider._id);
+        next.push(data.provider);
+        return next.sort((a, b) => (a.isCustom === b.isCustom ? a.name.localeCompare(b.name) : a.isCustom ? 1 : -1));
+      });
+      setFormData(fd => ({ ...fd, provider: data.provider.name }));
+      setNewProvider('');
+      setAddingProvider(false);
+      toast.success('Provider added');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleRemoveProvider = async (provider) => {
+    try {
+      await api.delete(`/api/providers/${provider._id}`);
+      setProviders(prev => prev.filter(p => p._id !== provider._id));
+      toast.success('Provider removed');
+    } catch (err) {
+      toast.error(err.message);
     }
   };
 
@@ -508,7 +589,7 @@ function AdminRecords() {
       <div className="section-header">
         <h2 className="section-title">All GC Records</h2>
         <div className="section-actions">
-          <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', userId: users[0]?._id || '' }); setFormError(''); setShowForm(true); }}>+ Add Record</button>
+          <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ ...emptyForm, userId: users.filter(u => u.role === 'user')[0]?._id || '' }); setFormError(''); setAddingProvider(false); setNewProvider(''); setShowForm(true); }}>+ Add Record</button>
           <button type="button" className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
           <button type="button" className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
         </div>
@@ -527,6 +608,8 @@ function AdminRecords() {
           <div className="bulk-action-buttons">
             <button type="button" className="btn btn-success btn-sm" onClick={handleBulkPay} disabled={selected.size === 0}>Mark Selected as Paid Back</button>
             <button type="button" className="btn btn-outline btn-sm" onClick={handleBulkUndo} disabled={selected.size === 0}>Undo Selected</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setPendingBulkShare('share')} disabled={selected.size === 0}>Share Selected</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setPendingBulkShare('unshare')} disabled={selected.size === 0}>Unshare Selected</button>
             {selected.size > 0 && (
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelected(new Set())}>Clear Selection</button>
             )}
@@ -572,7 +655,7 @@ function AdminRecords() {
               <table className="table table-compact records-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '40px' }}>
+                    <th style={{ width: '44px' }}>
                       <input
                         type="checkbox"
                         ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < records.length; }}
@@ -583,8 +666,10 @@ function AdminRecords() {
                     </th>
                     <th>User</th>
                     <th>Gift Card</th>
+                    <th>Provider</th>
                     <th>Amount</th>
                     <th>Paid</th>
+                    <th>Shared</th>
                     <th>Status</th>
                     <th>Submitted</th>
                     <th>Paid Back</th>
@@ -593,27 +678,43 @@ function AdminRecords() {
                 </thead>
                 <tbody>
                   {records.map(r => (
-                    <tr key={r._id}>
-                      <td><input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)} /></td>
+                    <tr key={r._id} className={selected.has(r._id) ? 'selected-row' : ''}>
+                      <td><input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)} aria-label={`Select record ${r.giftCard}`} /></td>
                       <td>
                         <div className="td-bold">{r.user?.name || 'Unknown'}</div>
                         <div className="text-muted text-xs">{r.user?.email}</div>
                       </td>
                       <td><strong>{r.giftCard}</strong></td>
-                      <td>{formatCurrency(r.giftCardAmount)}</td>
+                      <td>{r.provider || '—'}</td>
+                      <td>
+                        {formatCurrency(r.giftCardAmount)}
+                        {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
+                          <div className="text-xs amount-adjusted">Adjusted: {formatCurrency(r.adjustedAmount)}</div>
+                        )}
+                      </td>
                       <td>{formatCurrency(r.paid)}</td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          className="checkbox-shared"
+                          checked={Boolean(r.shared)}
+                          onChange={() => handleToggleShare(r)}
+                          aria-label={r.shared ? 'Unshare this record' : 'Share this record'}
+                        />
+                      </td>
                       <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                       <td>{formatDate(r.createdAt)}</td>
                       <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
                       <td>
                         <div className="action-buttons">
-                          <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
+                          <button type="button" className={r.shared ? 'btn btn-success btn-sm' : 'btn btn-outline btn-sm'} onClick={() => handleToggleShare(r)}>{r.shared ? 'Shared' : 'Share'}</button>
                           {r.paymentStatus === 'pending' ? (
-                            <button className="btn btn-success btn-sm" onClick={() => handlePayBack(r._id)}>Pay</button>
+                            <button type="button" className="btn btn-success btn-sm" onClick={() => handlePayBack(r._id)}>Pay</button>
                           ) : (
-                            <button className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
                           )}
-                          <button className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
+                          <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
                         </div>
                       </td>
                     </tr>
@@ -643,28 +744,36 @@ function AdminRecords() {
                 <div key={r._id} className={`mobile-record ${selected.has(r._id) ? 'mobile-record-selected' : ''}`}>
                   <div className="mobile-record-header">
                     <div>
-                      <div className="mobile-record-gc">{r.giftCard}</div>
+                      <div className="mobile-record-gc">
+                        {r.giftCard}
+                        {r.shared && <span className="badge badge-shared">Shared</span>}
+                      </div>
                       <div className="text-muted text-xs">{r.user?.name}</div>
                     </div>
                     <div className="mobile-record-header-right">
-                      <input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)} />
+                      <input type="checkbox" checked={selected.has(r._id)} onChange={() => toggleSelect(r._id)} aria-label={`Select record ${r.giftCard}`} />
                       <span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span>
                     </div>
                   </div>
                   <div className="mobile-record-details">
+                    <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                     <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
+                    {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
+                      <div><span className="text-muted">Adjusted:</span> <span className="amount-adjusted">{formatCurrency(r.adjustedAmount)}</span></div>
+                    )}
                     <div><span className="text-muted">Paid:</span> {formatCurrency(r.paid)}</div>
                     <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                     <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
                   </div>
                   <div className="mobile-record-actions">
-                    <button className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
+                    <button type="button" className={r.shared ? 'btn btn-success btn-sm' : 'btn btn-outline btn-sm'} onClick={() => handleToggleShare(r)}>{r.shared ? 'Unshare' : 'Share'}</button>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
                     {r.paymentStatus === 'pending' ? (
-                      <button className="btn btn-success btn-sm" onClick={() => handlePayBack(r._id)}>Mark Paid</button>
+                      <button type="button" className="btn btn-success btn-sm" onClick={() => handlePayBack(r._id)}>Mark Paid</button>
                     ) : (
-                      <button className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => handleUndoPay(r._id)}>Undo</button>
                     )}
-                    <button className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
+                    <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
                   </div>
                 </div>
               ))}
@@ -713,16 +822,67 @@ function AdminRecords() {
                   <label className="form-label">Gift Card PIN *</label>
                   <input type="text" className="form-input" value={formData.giftCardPin} onChange={e => setFormData({...formData, giftCardPin: e.target.value})} required />
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Gift Card Provider *</label>
+                  <div className="provider-select-row">
+                    <select className="form-select" value={formData.provider} onChange={e => setFormData({...formData, provider: e.target.value})} required>
+                      {providers.map(p => <option key={p._id} value={p.name}>{p.name}</option>)}
+                      {formData.provider && !providers.some(p => p.name === formData.provider) && (
+                        <option value={formData.provider}>{formData.provider}</option>
+                      )}
+                    </select>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setAddingProvider(!addingProvider)}>
+                      {addingProvider ? 'Done' : 'Manage'}
+                    </button>
+                  </div>
+                  {addingProvider && (
+                    <div className="provider-manage">
+                      <div className="provider-add-row">
+                        <input type="text" className="form-input" placeholder="New provider name..." value={newProvider} onChange={e => setNewProvider(e.target.value)} maxLength={60} />
+                        <button type="button" className="btn btn-primary btn-sm" onClick={handleAddProvider}>Add</button>
+                      </div>
+                      {providers.filter(p => p.isCustom).length > 0 && (
+                        <ul className="provider-custom-list">
+                          {providers.filter(p => p.isCustom).map(p => (
+                            <li key={p._id}>
+                              <span>{p.name}</span>
+                              <button type="button" className="btn-icon provider-remove" onClick={() => handleRemoveProvider(p)} aria-label={`Remove ${p.name}`}>&times;</button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {providers.filter(p => p.isCustom).length === 0 && (
+                        <p className="text-muted text-xs provider-empty-hint">No custom providers yet. Add one to make it available in every form.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Gift Card Amount (₹) *</label>
-                    <input type="number" className="form-input" value={formData.giftCardAmount} onChange={e => setFormData({...formData, giftCardAmount: e.target.value})} required min="0" step="0.01" />
+                    <label className="form-label">Gift Card Amount ({editingRecord ? 'Original' : '₹'}){editingRecord ? '' : ' *'}</label>
+                    <input type="number" className="form-input" value={formData.giftCardAmount} onChange={e => setFormData({...formData, giftCardAmount: e.target.value})} required={!editingRecord} disabled={Boolean(editingRecord)} min="0" step="0.01" />
+                    {editingRecord && <small className="form-hint">Original amount is preserved and cannot be changed.</small>}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Paid (₹) *</label>
                     <input type="number" className="form-input" value={formData.paid} onChange={e => setFormData({...formData, paid: e.target.value})} required min="0" step="0.01" />
                   </div>
                 </div>
+                {editingRecord && (
+                  <div className="form-group">
+                    <label className="form-label">Adjusted / Final Amount (₹)</label>
+                    <div className="provider-select-row">
+                      <input type="number" className="form-input" value={formData.adjustedAmount} onChange={e => setFormData({...formData, adjustedAmount: e.target.value})} min="0" step="0.01" placeholder="Leave empty to use the original amount" />
+                      {formData.adjustedAmount !== '' && (
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormData({...formData, adjustedAmount: '' })}>Clear</button>
+                      )}
+                    </div>
+                    {editingRecord.adjustedAmount !== undefined && editingRecord.adjustedAmount !== null && (
+                      <small className="form-hint">Set to {formatCurrency(editingRecord.adjustedAmount)}{editingRecord.adjustedBy && ` by ${editingRecord.adjustedBy.name}`}{editingRecord.adjustedAt ? ` on ${formatDateTime(editingRecord.adjustedAt)}` : ''}.</small>
+                    )}
+                    <small className="form-hint">Users see both the original and this final amount. The original is never overwritten.</small>
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Notes</label>
                   <textarea className="form-textarea" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
@@ -745,6 +905,16 @@ function AdminRecords() {
         onConfirm={confirmBulkUndo}
         onCancel={() => setPendingBulkUndo(false)}
         loading={bulkUndoing}
+      />
+
+      <ConfirmModal
+        open={Boolean(pendingBulkShare)}
+        title={pendingBulkShare === 'share' ? 'Share selected records' : 'Unshare selected records'}
+        message={`${pendingBulkShare === 'share' ? 'Share' : 'Unshare'} ${selected.size} selected record(s)? Records already ${pendingBulkShare === 'share' ? 'shared' : 'unshared'} will be skipped unchanged.`}
+        confirmLabel={pendingBulkShare === 'share' ? 'Share' : 'Unshare'}
+        onConfirm={confirmBulkShare}
+        onCancel={() => setPendingBulkShare(null)}
+        loading={bulkSharing}
       />
     </div>
   );
@@ -1034,15 +1204,18 @@ function AdminAudit() {
     user_disabled: 'User Disabled', user_enabled: 'User Enabled', password_reset: 'Password Reset',
     record_created: 'Record Created', record_edited: 'Record Edited', record_deleted: 'Record Deleted',
     record_paid_back: 'Record Paid Back', bulk_paid_back: 'Bulk Paid Back',
-    login_success: 'Login Success', login_failed: 'Login Failed'
+    login_success: 'Login Success', login_failed: 'Login Failed',
+    provider_added: 'Provider Added', provider_removed: 'Provider Removed',
+    record_shared: 'Record Shared', record_unshared: 'Record Unshared',
+    bulk_shared: 'Bulk Shared', bulk_unshared: 'Bulk Unshared'
   };
 
   const actionBadgeClass = (action) => {
-    if (action === 'login_failed') return 'badge-disabled';
+    if (action === 'login_failed' || action === 'provider_removed' || action === 'record_unshared' || action === 'bulk_unshared') return 'badge-disabled';
     if (action === 'user_deleted' || action === 'record_deleted') return 'badge-danger';
     if (action === 'user_disabled') return 'badge-warning';
-    if (action === 'login_success' || action === 'user_enabled' || action === 'record_paid_back' || action === 'bulk_paid_back') return 'badge-active';
-    if (action === 'user_created' || action === 'record_created') return 'badge-primary';
+    if (action === 'login_success' || action === 'user_enabled' || action === 'record_paid_back' || action === 'bulk_paid_back' || action === 'record_shared' || action === 'bulk_shared') return 'badge-active';
+    if (action === 'user_created' || action === 'record_created' || action === 'provider_added') return 'badge-primary';
     return 'status-pending';
   };
 

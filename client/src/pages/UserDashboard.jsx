@@ -20,12 +20,16 @@ export default function UserDashboard() {
   const [endDate, setEndDate] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
-  const [formData, setFormData] = useState({
-    giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: ''
-  });
+  const [providers, setProviders] = useState([]);
+  const emptyForm = { giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', provider: 'Flipkart' };
+  const [formData, setFormData] = useState(emptyForm);
   const [formError, setFormError] = useState('');
 
   useModalScrollLock(showForm);
+
+  useEffect(() => {
+    api.get('/api/providers').then(d => setProviders(d.providers || [])).catch(() => {});
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -74,7 +78,7 @@ export default function UserDashboard() {
 
       setShowForm(false);
       setEditingRecord(null);
-      setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' });
+      setFormData(emptyForm);
       setFormError('');
       fetchData();
     } catch (err) {
@@ -93,7 +97,8 @@ export default function UserDashboard() {
       giftCardPin: record.giftCardPin,
       giftCardAmount: record.giftCardAmount,
       paid: record.paid,
-      notes: record.notes || ''
+      notes: record.notes || '',
+      provider: record.provider || 'Flipkart'
     });
     setFormError('');
     setShowForm(true);
@@ -188,7 +193,7 @@ export default function UserDashboard() {
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">My Gift Cards</h2>
-            <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '' }); setFormError(''); setShowForm(true); }}>
+            <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}>
               + Add Record
             </button>
           </div>
@@ -233,6 +238,7 @@ export default function UserDashboard() {
                   <thead>
                     <tr>
                       <th>Gift Card</th>
+                      <th>Provider</th>
                       <th>Amount</th>
                       <th>Paid</th>
                       <th>Status</th>
@@ -244,8 +250,17 @@ export default function UserDashboard() {
                   <tbody>
                     {records.map(r => (
                       <tr key={r._id}>
-                        <td><strong>{r.giftCard}</strong></td>
-                        <td>{formatCurrency(r.giftCardAmount)}</td>
+                        <td>
+                          <strong>{r.giftCard}</strong>
+                          {r.shared && <span className="badge badge-shared">Shared</span>}
+                        </td>
+                        <td>{r.provider || '—'}</td>
+                        <td>
+                          {formatCurrency(r.giftCardAmount)}
+                          {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
+                            <div className="text-xs amount-adjusted">Adjusted: {formatCurrency(r.adjustedAmount)}</div>
+                          )}
+                        </td>
                         <td>{formatCurrency(r.paid)}</td>
                         <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
                         <td>{formatDate(r.createdAt)}</td>
@@ -267,13 +282,20 @@ export default function UserDashboard() {
                   <div key={r._id} className="mobile-record">
                     <div className="mobile-record-header">
                       <div>
-                        <div className="mobile-record-gc">{r.giftCard}</div>
+                        <div className="mobile-record-gc">
+                          {r.giftCard}
+                          {r.shared && <span className="badge badge-shared">Shared</span>}
+                        </div>
                         <div className="text-muted text-xs">PIN: {r.giftCardPin}</div>
                       </div>
                       <span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span>
                     </div>
                     <div className="mobile-record-details">
+                      <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
                       <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
+                      {r.adjustedAmount !== undefined && r.adjustedAmount !== null && (
+                        <div><span className="text-muted">Adjusted:</span> <span className="amount-adjusted">{formatCurrency(r.adjustedAmount)}</span></div>
+                      )}
                       <div><span className="text-muted">Paid:</span> {formatCurrency(r.paid)}</div>
                       <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
                       <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
@@ -322,10 +344,20 @@ export default function UserDashboard() {
                   <label className="form-label">Gift Card PIN *</label>
                   <input type="text" className="form-input" value={formData.giftCardPin} onChange={e => setFormData({...formData, giftCardPin: e.target.value})} required />
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Gift Card Provider *</label>
+                  <select className="form-select" value={formData.provider} onChange={e => setFormData({...formData, provider: e.target.value})} required>
+                    {providers.map(p => <option key={p._id} value={p.name}>{p.name}</option>)}
+                    {formData.provider && !providers.some(p => p.name === formData.provider) && (
+                      <option value={formData.provider}>{formData.provider}</option>
+                    )}
+                  </select>
+                </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Gift Card Amount (₹) *</label>
-                    <input type="number" className="form-input" value={formData.giftCardAmount} onChange={e => setFormData({...formData, giftCardAmount: e.target.value})} required min="0" step="0.01" />
+                    <label className="form-label">Gift Card Amount ({editingRecord ? 'Original' : '₹'}){editingRecord ? '' : ' *'}</label>
+                    <input type="number" className="form-input" value={formData.giftCardAmount} onChange={e => setFormData({...formData, giftCardAmount: e.target.value})} required={!editingRecord} disabled={Boolean(editingRecord)} min="0" step="0.01" />
+                    {editingRecord && <small className="form-hint">Original amount is preserved and cannot be changed.</small>}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Paid (₹) *</label>

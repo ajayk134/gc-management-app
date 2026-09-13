@@ -31,7 +31,7 @@ router.get('/csv', async (req, res) => {
       .populate('user', 'name email')
       .sort({ createdAt: -1 });
 
-    const csvHeader = 'User,Email,Gift Card,Gift Card PIN,Gift Card Amount,Paid,Payment Status,Submitted At,Paid Back At,Notes,Admin Note\n';
+    const csvHeader = 'User,Email,Gift Card,Gift Card PIN,Gift Card Amount,Provider,Adjusted Amount,Paid,Payment Status,Shared,Submitted At,Paid Back At,Notes,Admin Note\n';
     
     const csvRows = records.map(r => {
       const userName = r.user?.name || 'Unknown';
@@ -40,7 +40,7 @@ router.get('/csv', async (req, res) => {
       const paidBackAt = r.paidBackAt ? new Date(r.paidBackAt).toLocaleString('en-IN') : '';
       
       const escapeCsv = (val) => {
-        const str = String(val || '');
+        const str = String(val ?? '');
         if (str.includes(',') || str.includes('"') || str.includes('\n')) {
           return `"${str.replace(/"/g, '""')}"`;
         }
@@ -53,8 +53,11 @@ router.get('/csv', async (req, res) => {
         escapeCsv(r.giftCard),
         escapeCsv(r.giftCardPin),
         escapeCsv(r.giftCardAmount),
+        escapeCsv(r.provider),
+        escapeCsv(r.adjustedAmount !== undefined && r.adjustedAmount !== null ? r.adjustedAmount : ''),
         escapeCsv(r.paid),
         escapeCsv(r.paymentStatus),
+        escapeCsv(r.shared ? 'yes' : 'no'),
         escapeCsv(submittedAt),
         escapeCsv(paidBackAt),
         escapeCsv(r.notes),
@@ -105,8 +108,11 @@ router.get('/excel', async (req, res) => {
       'Gift Card': r.giftCard,
       'Gift Card PIN': r.giftCardPin,
       'Gift Card Amount': r.giftCardAmount,
+      'Provider': r.provider || '',
+      'Adjusted Amount': r.adjustedAmount !== undefined && r.adjustedAmount !== null ? r.adjustedAmount : '',
       'Paid': r.paid,
       'Payment Status': r.paymentStatus,
+      'Shared': r.shared ? 'yes' : 'no',
       'Submitted At': r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : '',
       'Paid Back At': r.paidBackAt ? new Date(r.paidBackAt).toLocaleString('en-IN') : '',
       'Notes': r.notes || '',

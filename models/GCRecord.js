@@ -21,6 +21,34 @@ const gcRecordSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  provider: {
+    type: String,
+    trim: true,
+    maxlength: 60,
+    default: ''
+  },
+  adjustedAmount: {
+    type: Number,
+    min: 0
+  },
+  adjustedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  adjustedAt: {
+    type: Date
+  },
+  shared: {
+    type: Boolean,
+    default: false
+  },
+  sharedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  sharedAt: {
+    type: Date
+  },
   paid: {
     type: Number,
     required: true,

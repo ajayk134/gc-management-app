@@ -668,20 +668,22 @@ body.modal-open { overflow: hidden; }
 .per-user-table th:nth-child(n+3) { text-align: right; }
 .per-user-table td:nth-child(n+3) { text-align: right; }
 
-.records-table th:nth-child(1) { width: 40px; }
-.records-table th:nth-child(2) { width: 18%; }
-.records-table th:nth-child(3) { width: 16%; }
-.records-table th:nth-child(4) { width: 9%; }
-.records-table th:nth-child(5) { width: 8%; }
-.records-table th:nth-child(6) { width: 9%; }
-.records-table th:nth-child(7) { width: 12%; }
-.records-table th:nth-child(8) { width: 12%; }
-.records-table th:nth-child(9) { width: 11%; }
+.records-table th:nth-child(1) { width: 44px; }
+.records-table th:nth-child(2) { width: 16%; }
+.records-table th:nth-child(3) { width: 14%; }
+.records-table th:nth-child(4) { width: 11%; }
+.records-table th:nth-child(5) { width: 10%; }
+.records-table th:nth-child(6) { width: 8%; }
+.records-table th:nth-child(7) { width: 7%; }
+.records-table th:nth-child(8) { width: 9%; }
+.records-table th:nth-child(9) { width: 12%; }
+.records-table th:nth-child(10) { width: 12%; }
+.records-table th:nth-child(11) { width: auto; }
 
-.records-table th:nth-child(4),
-.records-table th:nth-child(5) { text-align: right; }
-.records-table td:nth-child(4),
-.records-table td:nth-child(5) { text-align: right; }
+.records-table th:nth-child(5),
+.records-table th:nth-child(6) { text-align: right; }
+.records-table td:nth-child(5),
+.records-table td:nth-child(6) { text-align: right; }
 
 .audit-table th:nth-child(1) { width: 36px; }
 .audit-table th:nth-child(2) { width: 17%; }
@@ -691,18 +693,19 @@ body.modal-open { overflow: hidden; }
 .audit-table th:nth-child(6) { width: 34%; }
 .audit-table th:nth-child(7) { width: auto; }
 
-.user-records-table th:nth-child(1) { width: 20%; }
-.user-records-table th:nth-child(2) { width: 11%; }
-.user-records-table th:nth-child(3) { width: 9%; }
-.user-records-table th:nth-child(4) { width: 12%; }
-.user-records-table th:nth-child(5) { width: 14%; }
-.user-records-table th:nth-child(6) { width: 14%; }
-.user-records-table th:nth-child(7) { width: 20%; }
+.user-records-table th:nth-child(1) { width: 18%; }
+.user-records-table th:nth-child(2) { width: 12%; }
+.user-records-table th:nth-child(3) { width: 14%; }
+.user-records-table th:nth-child(4) { width: 9%; }
+.user-records-table th:nth-child(5) { width: 10%; }
+.user-records-table th:nth-child(6) { width: 13%; }
+.user-records-table th:nth-child(7) { width: 13%; }
+.user-records-table th:nth-child(8) { width: 11%; }
 
-.user-records-table th:nth-child(2),
-.user-records-table th:nth-child(3) { text-align: right; }
-.user-records-table td:nth-child(2),
-.user-records-table td:nth-child(3) { text-align: right; }
+.user-records-table th:nth-child(3),
+.user-records-table th:nth-child(4) { text-align: right; }
+.user-records-table td:nth-child(3),
+.user-records-table td:nth-child(4) { text-align: right; }
 
 .text-muted { color: var(--gray-500); }
 .text-xs { font-size: 0.75rem; }
@@ -735,6 +738,87 @@ body.modal-open { overflow: hidden; }
 .badge-warning { background: var(--warning-light); color: #92400e; }
 .badge-danger { background: var(--danger-light); color: #991b1b; }
 .badge-neutral { background: var(--gray-100); color: var(--gray-600); }
+
+.badge-shared { background: var(--primary-light); color: var(--primary-hover); }
+
+/* Adjusted amount display (user + admin tables) */
+.amount-adjusted {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Form helper text */
+.form-hint {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  line-height: 1.45;
+}
+
+/* Provider select + management (admin forms) */
+.provider-select-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.provider-select-row .form-select,
+.provider-select-row .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-select-row .btn {
+  flex-shrink: 0;
+}
+
+.provider-manage {
+  margin-top: 0.625rem;
+  padding: 0.75rem;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+}
+
+.provider-add-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.provider-add-row .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-custom-list {
+  list-style: none;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.provider-custom-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--gray-700);
+}
+
+.provider-remove {
+  width: 30px;
+  height: 30px;
+  font-size: 1.125rem;
+}
+
+.provider-empty-hint {
+  margin-top: 0.625rem;
+}
 
 /* ---------- Modal ---------- */
 .modal-overlay {
@@ -1068,6 +1152,10 @@ body.modal-open { overflow: hidden; }
   font-size: 0.9375rem;
   color: var(--gray-900);
   word-break: break-word;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
 }
 
 .mobile-record-details {
@@ -1365,11 +1453,15 @@ body.modal-open { overflow: hidden; }
 
 /* ---------- Checkbox ---------- */
 input[type="checkbox"] {
-  width: 1rem;
-  height: 1rem;
+  width: 0.9375rem;
+  height: 0.9375rem;
   cursor: pointer;
   accent-color: var(--primary);
   flex-shrink: 0;
+}
+
+.checkbox-shared {
+  accent-color: var(--success);
 }
 
 /* ---------- Per-user section ---------- */
@@ -1523,6 +1615,14 @@ input[type="checkbox"] {
     align-items: stretch;
   }
 
+  /* In a column flex container the horizontal flex rules (e.g. the search
+     box's flex-basis: 240px) no longer make sense — they would stretch the
+     vertical height instead of the width. Reset them so controls only ever
+     size to their content. */
+  .filter-bar > * {
+    flex: 0 1 auto;
+  }
+
   .filter-bar .form-input,
   .filter-bar .form-select {
     width: 100%;
@@ -1552,6 +1652,7 @@ input[type="checkbox"] {
     min-width: unset;
     width: 100%;
     max-width: none;
+    flex: 0 1 auto;
   }
 
   .form-row { grid-template-columns: 1fr; }
@@ -1612,8 +1713,8 @@ input[type="checkbox"] {
   }
 
   .mobile-select-all-label input[type="checkbox"] {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.25rem;
+    height: 1.25rem;
   }
 
   .mobile-selected-count {
@@ -1626,9 +1727,10 @@ input[type="checkbox"] {
   }
 
   .mobile-record-header-right input[type="checkbox"] {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.25rem;
+    height: 1.25rem;
     padding: 0;
+    margin: 0 0.375rem;
     cursor: pointer;
     accent-color: var(--primary);
   }
@@ -1867,6 +1969,18 @@ input[type="checkbox"] {
 [data-theme="dark"] .badge-danger { background: var(--danger-light); color: #fca5a5; }
 [data-theme="dark"] .badge-primary { background: var(--primary-light); color: #a5b4fc; }
 [data-theme="dark"] .badge-neutral { background: var(--gray-100); color: var(--gray-500); }
+[data-theme="dark"] .badge-shared { background: var(--primary-light); color: var(--primary); }
+[data-theme="dark"] .amount-adjusted { color: var(--warning); }
+[data-theme="dark"] .form-hint { color: var(--gray-500); }
+[data-theme="dark"] .provider-manage {
+  background: var(--surface-secondary);
+  border-color: var(--gray-200);
+}
+[data-theme="dark"] .provider-custom-list li {
+  background: var(--surface);
+  border-color: var(--gray-200);
+  color: var(--gray-700);
+}
 
 /* Modal */
 [data-theme="dark"] .modal {

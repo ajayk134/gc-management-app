@@ -12,6 +12,7 @@ const gcRoutes = require('./routes/gcRecords');
 const statsRoutes = require('./routes/stats');
 const auditRoutes = require('./routes/audit');
 const exportRoutes = require('./routes/export');
+const providerRoutes = require('./routes/providers');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -67,6 +68,7 @@ app.use('/api/gc-records', gcRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/providers', providerRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -118,6 +120,25 @@ mongoose.connect(MONGODB_URI, {
     });
     console.log('Default admin account created');
   }
+
+  // Seed built-in gift card providers if they do not exist yet
+  const Provider = require('./models/Provider');
+  const DEFAULT_PROVIDERS = [
+    'Flipkart', 'Amazon', 'Myntra', 'Croma', 'Reliance Digital', 'Ajio', 'Nykaa',
+    'Meesho', 'Swiggy', 'Zomato', 'Amazon Pay', 'Paytm', 'Big Bazaar',
+    'Shoppers Stop', 'Tata CLiQ', 'Snapdeal', 'BookMyShow', 'KFC', "McDonald's",
+    'Pizza Hut', "Domino's", 'Bata', 'Pantaloons', 'Westside', 'Lifestyle',
+    'Puma', 'Adidas', 'Nike', 'Decathlon'
+  ];
+  const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const providerName of DEFAULT_PROVIDERS) {
+    await Provider.updateOne(
+      { name: { $regex: `^${escapeRegex(providerName)}$`, $options: 'i' } },
+      { $setOnInsert: { name: providerName, isCustom: false } },
+      { upsert: true }
+    );
+  }
+  console.log('Gift card providers ensured');
   
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);

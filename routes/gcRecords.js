@@ -40,6 +40,7 @@ router.get('/', async (req, res) => {
       }).select('_id');
       filter.$or = [
         { giftCard: { $regex: search, $options: 'i' } },
+        { provider: { $regex: search, $options: 'i' } },
         { notes: { $regex: search, $options: 'i' } },
         { adminNote: { $regex: search, $options: 'i' } }
       ];
@@ -55,6 +56,8 @@ router.get('/', async (req, res) => {
     const [records, total] = await Promise.all([
       GCRecord.find(filter)
         .populate('user', 'name email')
+        .populate('adjustedBy', 'name email')
+        .populate('sharedBy', 'name email')
         .sort({ [sortField]: sortOrder })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -79,7 +82,7 @@ router.get('/', async (req, res) => {
 // Get single record
 router.get('/:id', async (req, res) => {
   try {
-    const record = await GCRecord.findById(req.params.id).populate('user', 'name email');
+    const record = await GCRecord.findById(req.params.id).populate('user', 'name email').populate('adjustedBy', 'name email').populate('sharedBy', 'name email');
     
     if (!record) {
       return res.status(404).json({ error: 'Record not found' });
@@ -98,7 +101,7 @@ router.get('/:id', async (req, res) => {
 // Create record (user or admin)
 router.post('/', async (req, res) => {
   try {
-    const { giftCard, giftCardPin, giftCardAmount, paid, notes } = req.body;
+    const { giftCard, giftCardPin, giftCardAmount, paid, notes, provider } = req.body;
     
     if (!giftCard || !giftCardPin || giftCardAmount === undefined || paid === undefined) {
       return res.status(400).json({ error: 'Gift Card, PIN, Amount, and Paid are required' });
@@ -118,6 +121,7 @@ router.post('/', async (req, res) => {
 
     const trimmedCard = giftCard.trim();
     const trimmedPin = giftCardPin.trim();
+    const trimmedProvider = String(provider || '').trim().slice(0, 60);
 
     const existing = await GCRecord.findOne({
       user: userId,
@@ -137,6 +141,7 @@ router.post('/', async (req, res) => {
       giftCard: trimmedCard,
       giftCardPin: trimmedPin,
       giftCardAmount: amountVal,
+      provider: trimmedProvider,
       paid: paidVal,
       notes: notes || ''
     });
@@ -145,6 +150,7 @@ router.post('/', async (req, res) => {
 
     await logAction('record_created', req.userId, 'record', record._id, {
       giftCard: record.giftCard,
+      provider: record.provider,
       amount: record.giftCardAmount,
       userId: userId
     }, req.ip);
@@ -175,7 +181,7 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const { giftCard, giftCardPin, giftCardAmount, paid, notes, adminNote } = req.body;
+    const { giftCard, giftCardPin, giftCardAmount, paid, notes, adminNote, provider, adjustedAmount } = req.body;
 
     const finalGiftCard = giftCard !== undefined ? giftCard.trim() : record.giftCard;
     const finalGiftCardPin = giftCardPin !== undefined ? giftCardPin.trim() : record.giftCardPin;
@@ -201,12 +207,42 @@ router.put('/:id', async (req, res) => {
     if (giftCard !== undefined) record.giftCard = finalGiftCard;
     if (giftCardPin !== undefined) record.giftCardPin = finalGiftCardPin;
 
-    const finalAmount = giftCardAmount !== undefined ? parseFloat(giftCardAmount) : record.giftCardAmount;
+    // The original amount is preserved permanently: it is only ever set at
+    // creation and is never overwritten via updates.
+    const finalAmount = record.giftCardAmount;
     const finalPaid = paid !== undefined ? parseFloat(paid) : record.paid;
-    if (giftCardAmount !== undefined) record.giftCardAmount = finalAmount;
-    if (paid !== undefined) record.paid = finalPaid;
+    if (paid !== undefined) {
+      if (!Number.isFinite(finalPaid) || finalPaid < 0) {
+        return res.status(400).json({ error: 'Paid amount must be a non-negative number' });
+      }
+      record.paid = finalPaid;
+    }
     if (finalPaid > finalAmount) {
       return res.status(400).json({ error: 'Paid amount cannot exceed gift card amount' });
+    }
+
+    if (provider !== undefined) {
+      const finalProvider = String(provider || '').trim().slice(0, 60);
+      record.provider = finalProvider;
+    }
+
+    // Admin can set, change, or clear the adjusted/final amount for a record.
+    // The original giftCardAmount is never touched. Records who adjusted it
+    // and when for auditability.
+    if (req.user.role === 'admin' && adjustedAmount !== undefined) {
+      if (adjustedAmount === null || adjustedAmount === '') {
+        record.adjustedAmount = undefined;
+        record.adjustedBy = undefined;
+        record.adjustedAt = undefined;
+      } else {
+        const adjustedVal = parseFloat(adjustedAmount);
+        if (!Number.isFinite(adjustedVal) || adjustedVal < 0) {
+          return res.status(400).json({ error: 'Adjusted amount must be a non-negative number' });
+        }
+        record.adjustedAmount = adjustedVal;
+        record.adjustedBy = req.userId;
+        record.adjustedAt = new Date();
+      }
     }
 
     if (notes !== undefined) record.notes = notes;
@@ -426,6 +462,107 @@ router.post('/bulk-undo-pay', adminOnly, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Bulk undo failed' });
+  }
+});
+
+// Toggle shared status for a single record (admin only)
+router.post('/:id/share', adminOnly, async (req, res) => {
+  try {
+    const { shared } = req.body;
+    const boolShared = shared === true;
+
+    const record = await GCRecord.findById(req.params.id);
+
+    if (!record) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    if (record.shared === boolShared) {
+      return res.status(400).json({
+        error: boolShared ? 'Record is already shared' : 'Record is already unshared'
+      });
+    }
+
+    record.shared = boolShared;
+    if (boolShared) {
+      record.sharedBy = req.userId;
+      record.sharedAt = new Date();
+    } else {
+      record.sharedBy = undefined;
+      record.sharedAt = undefined;
+    }
+
+    await record.save();
+    await record.populate('user', 'name email');
+
+    await logAction(boolShared ? 'record_shared' : 'record_unshared', req.userId, 'record', record._id, {
+      giftCard: record.giftCard,
+      shared: boolShared
+    }, req.ip);
+
+    res.json({ record });
+  } catch (error) {
+    console.error('Share record error:', error);
+    res.status(500).json({ error: 'Failed to update shared status' });
+  }
+});
+
+// Bulk set shared status for selected records (admin only)
+router.post('/bulk-share', adminOnly, async (req, res) => {
+  try {
+    const { recordIds, shared } = req.body;
+    const boolShared = shared === true;
+
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return res.status(400).json({ error: 'Record IDs are required' });
+    }
+
+    const results = { success: [], skipped: [], failed: [] };
+
+    for (const id of recordIds) {
+      try {
+        const record = await GCRecord.findById(id);
+        if (!record) {
+          results.skipped.push({ id, reason: 'Not found' });
+          continue;
+        }
+
+        if (record.shared === boolShared) {
+          results.skipped.push({ id, reason: 'Already in state' });
+          continue;
+        }
+
+        record.shared = boolShared;
+        if (boolShared) {
+          record.sharedBy = req.userId;
+          record.sharedAt = new Date();
+        } else {
+          record.sharedBy = undefined;
+          record.sharedAt = undefined;
+        }
+        await record.save();
+
+        results.success.push(id);
+      } catch (err) {
+        results.failed.push({ id, error: err.message });
+      }
+    }
+
+    if (results.success.length > 0) {
+      await logAction(boolShared ? 'bulk_shared' : 'bulk_unshared', req.userId, 'record', results.success[0], {
+        count: results.success.length,
+        skippedCount: results.skipped.length,
+        failedCount: results.failed.length,
+        recordIds: results.success
+      }, req.ip);
+    }
+
+    res.json({
+      message: `${results.success.length} record(s) marked as ${boolShared ? 'shared' : 'unshared'}`,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Bulk share failed' });
   }
 });
 
