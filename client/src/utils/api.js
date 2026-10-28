@@ -5,16 +5,22 @@ class ApiClient {
     this.baseUrl = API_BASE;
   }
 
-  getToken() {
-    return localStorage.getItem('token');
+  getUser() {
+    try {
+      const savedUser = localStorage.getItem('user');
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
   }
 
   async request(method, path, body = null, isFormData = false) {
     const headers = {};
-    const token = this.getToken();
+    const user = this.getUser();
     
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    if (user) {
+      headers['x-user-id'] = user.id || user._id;
+      headers['x-user-email'] = user.email;
     }
     
     if (!isFormData && body) {
@@ -30,13 +36,7 @@ class ApiClient {
     const data = isFormData ? await response.blob() : await response.json();
 
     if (!response.ok) {
-      if (response.status === 401 && !path.startsWith('/api/auth/login')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-      }
+      // Do not auto-logout on auth errors; only logout when explicitly clicked
       throw new Error(data.error || 'Request failed');
     }
 
@@ -50,8 +50,11 @@ class ApiClient {
 
   async downloadFile(path) {
     const headers = {};
-    const token = this.getToken();
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const user = this.getUser();
+    if (user) {
+      headers['x-user-id'] = user.id || user._id;
+      headers['x-user-email'] = user.email;
+    }
     
     const response = await fetch(`${this.baseUrl}${path}`, { headers });
     if (!response.ok) throw new Error('Download failed');

@@ -1,23 +1,23 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'gc-management-secret-key-change-in-production';
 
 const auth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies?.token;
-    
-    if (!token) {
+    let user = null;
+
+    // Try to get user from custom headers (for session-based auth without tokens)
+    const userId = req.header('x-user-id') || req.header('X-User-Id') || req.body?.userId || req.query?.userId;
+    const userEmail = req.header('x-user-email') || req.header('X-User-Email') || req.body?.email || req.query?.email;
+
+    if (userId) {
+      user = await User.findById(userId).select('-password');
+    } else if (userEmail) {
+      user = await User.findOne({ email: userEmail.toLowerCase() }).select('-password');
+    }
+
+    if (!user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.userId).select('-password');
-    
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
-    }
-    
     if (!user.active) {
       return res.status(403).json({ error: 'Account is disabled' });
     }
@@ -26,12 +26,6 @@ const auth = async (req, res, next) => {
     req.userId = user._id;
     next();
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expired' });
-    }
     res.status(500).json({ error: 'Authentication error' });
   }
 };
@@ -50,4 +44,4 @@ const userOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { auth, adminOnly, userOnly, JWT_SECRET };
+module.exports = { auth, adminOnly, userOnly };

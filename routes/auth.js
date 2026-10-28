@@ -1,7 +1,6 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { auth, JWT_SECRET } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 
 const router = express.Router();
@@ -34,16 +33,9 @@ router.post('/login', async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
     await logAction('login_success', user._id, 'user', user._id, {}, req.ip);
 
     res.json({
-      token,
       user: {
         id: user._id,
         name: user.name,

@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
-const rateLimit = require('express-rate-limit');
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
@@ -17,11 +16,6 @@ const providerRoutes = require('./routes/providers');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Trust the Render proxy so rate limiting works correctly behind it
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
-}
-
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -29,26 +23,6 @@ app.use((req, res, next) => {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
-});
-
-// Rate limiting. Production defaults: 200 requests / 15 min globally and
-// 20 login attempts / 15 min. When NODE_ENV=test (a local, test-only
-// configuration that never runs in production) the limits are raised so
-// automated test suites, which legitimately repeat logins and API calls,
-// do not trip the production-style limits. Production security is unchanged.
-const isTestEnv = process.env.NODE_ENV === 'test';
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX || (isTestEnv ? 100000 : 200)),
-  message: { error: 'Too many requests, please try again later.' }
-});
-app.use('/api/', limiter);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: Number(process.env.AUTH_RATE_LIMIT_MAX || (isTestEnv ? 100000 : 20)),
-  message: { error: 'Too many login attempts, please try again later.' }
 });
 
 app.use(compression());
@@ -68,7 +42,7 @@ app.use(cors({
 }));
 
 // API routes
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/gc-records', gcRoutes);
 app.use('/api/stats', statsRoutes);
