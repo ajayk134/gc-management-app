@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
+import DowntimeRibbon from '../components/DowntimeRibbon';
 import api from '../utils/api';
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
@@ -141,6 +142,7 @@ export default function UserDashboard() {
       </header>
 
       <div className="main-content">
+        <DowntimeRibbon />
         <h2 className="section-title">My Dashboard</h2>
 
         <div className="stats-grid">

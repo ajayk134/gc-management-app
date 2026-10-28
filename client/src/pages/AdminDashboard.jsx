@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt, Clock, Banknote } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
+import DowntimeRibbon from '../components/DowntimeRibbon';
+import { useDowntime } from '../context/DowntimeContext';
 import api from '../utils/api';
 import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
@@ -12,6 +14,7 @@ const navItems = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'records', label: 'Records' },
   { key: 'users', label: 'Users' },
+  { key: 'downtime', label: 'Downtime' },
   { key: 'audit', label: 'Audit' }
 ];
 
@@ -45,9 +48,11 @@ export default function AdminDashboard() {
         </div>
       </header>
       <div className="main-content">
+        <DowntimeRibbon showActive />
         {tab === 'dashboard' && <AdminStats />}
         {tab === 'records' && <AdminRecords />}
         {tab === 'users' && <AdminUsers />}
+        {tab === 'downtime' && <AdminDowntime />}
         {tab === 'audit' && <AdminAudit />}
       </div>
     </div>
@@ -903,6 +908,430 @@ function AdminRecords() {
   );
 }
 
+function toLocalDateTimeInput(value) {
+  const d = value ? new Date(value) : new Date();
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function defaultDowntimeForm() {
+  return {
+    title: '',
+    message: '',
+    startAt: toLocalDateTimeInput(Date.now() + 60 * 60 * 1000),
+    endAt: toLocalDateTimeInput(Date.now() + 2 * 60 * 60 * 1000)
+  };
+}
+
+const downtimeStatusLabels = {
+  scheduled: 'Scheduled',
+  active: 'Active',
+  completed: 'Completed',
+  cancelled: 'Cancelled'
+};
+
+const downtimeStatusClasses = {
+  scheduled: 'badge-primary',
+  active: 'badge-danger',
+  completed: 'badge-neutral',
+  cancelled: 'badge-disabled'
+};
+
+function AdminDowntime() {
+  const { refresh: refreshDowntimeStatus } = useDowntime();
+  const [data, setData] = useState({ downtimes: [], active: false, current: null, upcoming: null });
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState(defaultDowntimeForm);
+  const [saving, setSaving] = useState(false);
+  const [actionId, setActionId] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [formError, setFormError] = useState('');
+
+  useModalScrollLock(showForm || Boolean(pendingAction));
+
+  const fetchData = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
+    try {
+      const result = await api.get('/api/downtime');
+      setData({
+        downtimes: result.downtimes || [],
+        active: Boolean(result.active),
+        current: result.current || null,
+        upcoming: result.upcoming || null
+      });
+    } catch (err) {
+      toast.error('Failed to load scheduled downtime');
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData(true);
+    const interval = setInterval(() => fetchData(false), 20000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  const openForm = () => {
+    setFormData(defaultDowntimeForm());
+    setFormError('');
+    setShowForm(true);
+  };
+
+  const buildPayload = (immediate = false) => {
+    const start = immediate ? new Date() : new Date(formData.startAt);
+    const end = new Date(formData.endAt);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new Error('Please choose valid start and end date/time values');
+    }
+    if (end <= start) {
+      throw new Error('End date/time must be after the start date/time');
+    }
+    if (end <= new Date()) {
+      throw new Error('End date/time must be in the future');
+    }
+
+    return {
+      title: formData.title.trim(),
+      message: formData.message.trim(),
+      startAt: start.toISOString(),
+      endAt: end.toISOString()
+    };
+  };
+
+  const createDowntime = async (immediate = false) => {
+    setFormError('');
+    let payload;
+    try {
+      payload = buildPayload(immediate);
+    } catch (err) {
+      setFormError(err.message);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.post('/api/downtime', payload);
+      toast.success(immediate ? 'Downtime started now' : 'Downtime scheduled');
+      setShowForm(false);
+      setFormData(defaultDowntimeForm());
+      await fetchData(false);
+      refreshDowntimeStatus();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await createDowntime(false);
+  };
+
+  const runAction = async () => {
+    if (!pendingAction) return;
+    const { type, downtime } = pendingAction;
+    setActionId(downtime._id);
+    try {
+      if (type === 'delete') {
+        await api.delete(`/api/downtime/${downtime._id}`);
+      } else {
+        await api.post(`/api/downtime/${downtime._id}/${type}`);
+      }
+      const messages = {
+        start: 'Downtime started immediately',
+        stop: 'Downtime stopped',
+        cancel: 'Scheduled downtime cancelled',
+        delete: 'Downtime entry deleted'
+      };
+      toast.success(messages[type]);
+      setPendingAction(null);
+      await fetchData(false);
+      refreshDowntimeStatus();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const actionCopy = {
+    start: {
+      title: 'Start downtime now',
+      message: 'Regular users will be blocked from the application immediately. Administrators will keep access. Continue?',
+      confirmLabel: 'Start now',
+      danger: false
+    },
+    stop: {
+      title: 'Stop active downtime',
+      message: 'End the active maintenance window now and restore regular user access?',
+      confirmLabel: 'Stop downtime',
+      danger: true
+    },
+    cancel: {
+      title: 'Cancel scheduled downtime',
+      message: 'Cancel this future maintenance window? Users will no longer see it as upcoming.',
+      confirmLabel: 'Cancel downtime',
+      danger: true
+    },
+    delete: {
+      title: 'Delete downtime entry',
+      message: 'Delete this completed or cancelled downtime entry? This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true
+    }
+  };
+
+  const confirmation = pendingAction ? actionCopy[pendingAction.type] : null;
+
+  return (
+    <div>
+      <div className="section-header">
+        <h2 className="section-title">Scheduled Downtime</h2>
+        <button type="button" className="btn btn-primary" onClick={openForm}>+ Schedule Downtime</button>
+      </div>
+
+      <div className="downtime-summary-grid">
+        <div className={`downtime-summary-card ${data.active ? 'downtime-summary-card-active' : ''}`}>
+          <span className="downtime-summary-label">Current status</span>
+          <strong className="downtime-summary-value">
+            {data.active ? 'Downtime active' : 'Application available'}
+          </strong>
+          <span className="downtime-summary-meta">
+            {data.active && data.current
+              ? `Until ${formatDateTime(data.current.endAt)}`
+              : 'Regular users can access the application'}
+          </span>
+        </div>
+        <div className="downtime-summary-card">
+          <span className="downtime-summary-label">Next scheduled</span>
+          <strong className="downtime-summary-value">
+            {data.upcoming ? formatDateTime(data.upcoming.startAt) : 'None scheduled'}
+          </strong>
+          <span className="downtime-summary-meta">
+            {data.upcoming
+              ? `Ends ${formatDateTime(data.upcoming.endAt)}${data.upcoming.title ? ` · ${data.upcoming.title}` : ''}`
+              : 'Schedule a window to notify users in advance'}
+          </span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading"><div className="spinner"></div></div>
+      ) : data.downtimes.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">🛠️</div>
+          <div className="empty-state-text">No downtime scheduled</div>
+          <p className="text-muted" style={{ fontSize: '0.8125rem' }}>Schedule maintenance to notify users in advance.</p>
+        </div>
+      ) : (
+        <>
+          <div className="table-container">
+            <table className="table table-compact downtime-table">
+              <thead>
+                <tr>
+                  <th>Window</th>
+                  <th>Details</th>
+                  <th>Status</th>
+                  <th>Created By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.downtimes.map(item => {
+                  const status = item.status;
+                  return (
+                    <tr key={item._id}>
+                      <td className="text-nowrap">
+                        <div className="downtime-window-cell">
+                          <span><strong>{formatDateTime(item.startAt)}</strong></span>
+                          <span className="text-muted text-xs">to {formatDateTime(item.endAt)}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="td-bold">{item.title || 'Scheduled maintenance'}</div>
+                        {item.message && <div className="text-muted text-xs downtime-message-cell">{item.message}</div>}
+                      </td>
+                      <td>
+                        <span className={`badge ${downtimeStatusClasses[status] || 'badge-neutral'}`}>
+                          {downtimeStatusLabels[status] || status}
+                        </span>
+                      </td>
+                      <td className="text-muted">{item.createdBy?.name || 'Administrator'}</td>
+                      <td>
+                        <div className="action-buttons">
+                          {status === 'scheduled' && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-success btn-sm"
+                                onClick={() => setPendingAction({ type: 'start', downtime: item })}
+                                disabled={Boolean(actionId)}
+                              >Start now</button>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => setPendingAction({ type: 'cancel', downtime: item })}
+                                disabled={Boolean(actionId)}
+                              >Cancel</button>
+                            </>
+                          )}
+                          {status === 'active' && (
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              onClick={() => setPendingAction({ type: 'stop', downtime: item })}
+                              disabled={Boolean(actionId)}
+                            >Stop now</button>
+                          )}
+                          {(status === 'completed' || status === 'cancelled') && (
+                            <button
+                              type="button"
+                              className="btn btn-danger-outline btn-sm"
+                              onClick={() => setPendingAction({ type: 'delete', downtime: item })}
+                              disabled={Boolean(actionId)}
+                            >Delete</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mobile-view">
+            {data.downtimes.map(item => {
+              const status = item.status;
+              return (
+                <div key={item._id} className="mobile-record downtime-mobile-card">
+                  <div className="mobile-record-header">
+                    <div>
+                      <div className="mobile-record-gc">{item.title || 'Scheduled maintenance'}</div>
+                      <div className="text-muted text-xs">{formatDateTime(item.startAt)}</div>
+                    </div>
+                    <span className={`badge ${downtimeStatusClasses[status] || 'badge-neutral'}`}>
+                      {downtimeStatusLabels[status] || status}
+                    </span>
+                  </div>
+                  <div className="mobile-record-details">
+                    <div><span className="text-muted">Ends:</span> {formatDateTime(item.endAt)}</div>
+                    <div><span className="text-muted">Created by:</span> {item.createdBy?.name || 'Administrator'}</div>
+                    {item.message && <div><span className="text-muted">Message:</span> {item.message}</div>}
+                  </div>
+                  <div className="mobile-record-actions">
+                    {status === 'scheduled' && (
+                      <>
+                        <button type="button" className="btn btn-success btn-sm" onClick={() => setPendingAction({ type: 'start', downtime: item })} disabled={Boolean(actionId)}>Start now</button>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setPendingAction({ type: 'cancel', downtime: item })} disabled={Boolean(actionId)}>Cancel</button>
+                      </>
+                    )}
+                    {status === 'active' && (
+                      <button type="button" className="btn btn-danger btn-sm" onClick={() => setPendingAction({ type: 'stop', downtime: item })} disabled={Boolean(actionId)}>Stop now</button>
+                    )}
+                    {(status === 'completed' || status === 'cancelled') && (
+                      <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => setPendingAction({ type: 'delete', downtime: item })} disabled={Boolean(actionId)}>Delete</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {showForm && (
+        <div className="modal-overlay" onClick={() => { if (!saving) setShowForm(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Schedule Downtime</h3>
+              <button className="btn-icon" onClick={() => setShowForm(false)} disabled={saving} aria-label="Close">&times;</button>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="modal-body">
+                {formError && (
+                  <div className="form-error-banner">
+                    <span className="form-error-icon">!</span>
+                    <span>{formError}</span>
+                  </div>
+                )}
+                <div className="form-group">
+                  <label className="form-label">Title</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formData.title}
+                    onChange={e => setFormData({ ...formData, title: e.target.value })}
+                    maxLength={120}
+                    placeholder="Scheduled maintenance"
+                  />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Start date &amp; time *</label>
+                    <input
+                      type="datetime-local"
+                      className="form-input"
+                      value={formData.startAt}
+                      onChange={e => setFormData({ ...formData, startAt: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">End date &amp; time *</label>
+                    <input
+                      type="datetime-local"
+                      className="form-input"
+                      value={formData.endAt}
+                      onChange={e => setFormData({ ...formData, endAt: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Message shown to users</label>
+                  <textarea
+                    className="form-textarea"
+                    value={formData.message}
+                    onChange={e => setFormData({ ...formData, message: e.target.value })}
+                    maxLength={500}
+                    placeholder="Optional message explaining the maintenance..."
+                  />
+                  <small className="form-hint">{formData.message.length}/500 characters. Times are shown in your local time zone.</small>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)} disabled={saving}>Cancel</button>
+                <button type="button" className="btn btn-outline" onClick={() => createDowntime(true)} disabled={saving}>
+                  {saving ? 'Please wait...' : 'Start Immediately'}
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Please wait...' : 'Schedule'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={Boolean(pendingAction)}
+        title={confirmation?.title || 'Confirm'}
+        message={confirmation?.message || 'Are you sure?'}
+        confirmLabel={confirmation?.confirmLabel || 'Confirm'}
+        danger={Boolean(confirmation?.danger)}
+        onConfirm={runAction}
+        onCancel={() => { if (!actionId) setPendingAction(null); }}
+        loading={Boolean(actionId)}
+      />
+    </div>
+  );
+}
+
 function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1185,7 +1614,10 @@ function AdminAudit() {
     login_success: 'Login Success', login_failed: 'Login Failed',
     provider_added: 'Provider Added', provider_removed: 'Provider Removed',
     record_shared: 'Record Shared', record_unshared: 'Record Unshared',
-    bulk_shared: 'Bulk Shared', bulk_unshared: 'Bulk Unshared'
+    bulk_shared: 'Bulk Shared', bulk_unshared: 'Bulk Unshared',
+    downtime_scheduled: 'Downtime Scheduled', downtime_started: 'Downtime Started',
+    downtime_stopped: 'Downtime Stopped', downtime_cancelled: 'Downtime Cancelled',
+    downtime_deleted: 'Downtime Deleted'
   };
 
   const actionBadgeClass = (action) => {
@@ -1193,7 +1625,9 @@ function AdminAudit() {
     if (action === 'user_deleted' || action === 'record_deleted') return 'badge-danger';
     if (action === 'user_disabled') return 'badge-warning';
     if (action === 'login_success' || action === 'user_enabled' || action === 'record_paid_back' || action === 'bulk_paid_back' || action === 'record_shared' || action === 'bulk_shared') return 'badge-active';
-    if (action === 'user_created' || action === 'record_created' || action === 'provider_added') return 'badge-primary';
+    if (action === 'user_created' || action === 'record_created' || action === 'provider_added' || action === 'downtime_scheduled') return 'badge-primary';
+    if (action === 'downtime_started') return 'badge-danger';
+    if (action === 'downtime_stopped' || action === 'downtime_cancelled' || action === 'downtime_deleted') return 'badge-neutral';
     return 'status-pending';
   };
 
@@ -1274,7 +1708,7 @@ function AdminAudit() {
                   <td className="text-nowrap">{formatDateTime(log.createdAt)}</td>
                   <td><span className={`badge ${actionBadgeClass(log.action)}`}>{actionLabels[log.action] || log.action}</span></td>
                   <td>{log.performedBy?.name || 'System'}</td>
-                  <td><span className="badge badge-neutral">{log.targetType === 'user' ? 'User' : 'Record'}</span></td>
+                  <td><span className="badge badge-neutral">{log.targetType === 'user' ? 'User' : log.targetType === 'record' ? 'Record' : log.targetType === 'downtime' ? 'Downtime' : 'Provider'}</span></td>
                   <td className="text-muted text-xs audit-details-cell">
                     <span className="audit-details-text">{formatDetails(log.metadata)}</span>
                   </td>
@@ -1323,7 +1757,7 @@ function AdminAudit() {
                   <span className="text-muted">User:</span> {log.performedBy?.name || 'System'}
                 </div>
                 <div className="mobile-audit-user">
-                  <span className="text-muted">Target:</span> <span className={`badge badge-neutral`}>{log.targetType === 'user' ? 'User' : 'Record'}</span>
+                  <span className="text-muted">Target:</span> <span className={`badge badge-neutral`}>{log.targetType === 'user' ? 'User' : log.targetType === 'record' ? 'Record' : log.targetType === 'downtime' ? 'Downtime' : 'Provider'}</span>
                 </div>
                 {formatDetails(log.metadata) && (
                   <div className="mobile-audit-details">

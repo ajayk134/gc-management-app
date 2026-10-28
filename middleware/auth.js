@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const { findActiveDowntime, serializeDowntime } = require('../utils/downtime');
 
 const auth = async (req, res, next) => {
   try {
@@ -23,6 +24,19 @@ const auth = async (req, res, next) => {
 
     if (!user.active) {
       return res.status(403).json({ error: 'Account is disabled' });
+    }
+
+    // Regular users are blocked while a scheduled downtime window is active.
+    // Administrators are always allowed through so they can manage downtime.
+    if (user.role !== 'admin') {
+      const activeDowntime = await findActiveDowntime();
+      if (activeDowntime) {
+        return res.status(503).json({
+          error: 'The application is temporarily unavailable due to scheduled maintenance.',
+          code: 'DOWNTIME_ACTIVE',
+          downtime: serializeDowntime(activeDowntime)
+        });
+      }
     }
 
     req.user = user;

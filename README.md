@@ -35,6 +35,7 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - **Dashboard** — Overall statistics with per-user breakdown. Filterable by user and date range.
 - **Records** — View, create, edit, delete, and mark records as paid back. Supports bulk selection and bulk "Mark as Paid Back". Searchable and filterable by status, user, and date range. Undo payment status.
 - **Users** — Create, edit, disable/enable, reset password, and delete users. Each user card shows their GC statistics.
+- **Downtime** — Schedule maintenance windows with start/end date-time, start a scheduled window immediately, stop active downtime early, or cancel future downtime. Administrators always retain access.
 - **Audit** — View paginated audit history with action filtering. Sensitive fields (PINs, passwords) are redacted in the UI.
 - **Exports** — Download GC records as CSV or Excel (.xlsx), respecting current filters.
 
@@ -42,6 +43,7 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - **Dashboard** — Personal statistics (total cards, total amount, paid, pending, paid back).
 - **Records** — Submit new GC records, edit, delete, and view own records. Searchable with status and date filters.
 - **No payment actions** — Users cannot mark records as paid; only Admin can.
+- **Downtime notices** — An upcoming-maintenance ribbon shows the scheduled date and time. During active downtime, users see a full maintenance page instead of the application; access resumes automatically when the window ends.
 
 ### GC Validation
 - **Duplicate rule (per user):** For the same user, the combination of `giftCard` + `giftCardPin` must be unique. This is enforced both:
@@ -50,11 +52,21 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - Different users may have the same gift card + PIN combination.
 - Edit operations exclude the current record (`_id: { $ne: record._id }`) when checking for duplicates.
 
+### Scheduled Downtime
+- Administrators manage downtime from the **Downtime** tab.
+- A window has a start and end date/time (stored as UTC, entered and displayed in the browser's local time zone), an optional title, and a user-facing message.
+- **Start now** moves a future window's start to the current time; **Stop now** ends active downtime early; **Cancel** removes a future window.
+- Overlapping open windows are rejected (HTTP 409). Active or scheduled entries cannot be deleted until stopped or cancelled.
+- Availability is evaluated from the stored time window on every request, so downtime activates and expires automatically without a background worker.
+- While active, all authenticated non-admin API requests return `503` with code `DOWNTIME_ACTIVE`; login remains available so users can see the maintenance page and administrators can still sign in.
+- The public `GET /api/downtime/status` endpoint powers the login/dashboard ribbon and the maintenance page.
+
 ### Audit Logging
 The following actions are logged to the `AuditLog` collection:
 - `user_created`, `user_edited`, `user_deleted`, `user_disabled`, `user_enabled`, `password_reset`
 - `record_created`, `record_edited`, `record_deleted`, `record_paid_back`, `bulk_paid_back`
 - `login_success`, `login_failed`
+- `downtime_scheduled`, `downtime_started`, `downtime_stopped`, `downtime_cancelled`, `downtime_deleted`
 
 **Sensitive data is never logged:**
 - Gift Card PINs are excluded from audit metadata on edits.
@@ -80,6 +92,7 @@ Browser (React SPA)
   └── MongoDB (Mongoose ODM)
         ├── User
         ├── GCRecord
+        ├── Downtime
         └── AuditLog
 ```
 
@@ -105,17 +118,23 @@ gc-management-app/
 │       ├── App.jsx             # Routes + AuthProvider wrapper
 │       ├── index.css           # All CSS (single file, ~34KB)
 │       ├── context/
-│       │   └── AuthContext.jsx # Auth state, login/logout, role helpers
+│       │   ├── AuthContext.jsx # Auth state, login/logout, role helpers
+│       │   └── DowntimeContext.jsx # Polls downtime status; active/upcoming state
+│       ├── components/
+│       │   ├── DowntimeRibbon.jsx  # Upcoming/active maintenance ribbon
+│       │   └── ...             # Theme toggle, paid amount, etc.
 │       ├── pages/
 │       │   ├── Login.jsx       # Login page
-│       │   ├── AdminDashboard.jsx  # Admin tabs: Dashboard, Records, Users, Audit
-│       │   └── UserDashboard.jsx   # User dashboard + records
+│       │   ├── AdminDashboard.jsx  # Admin tabs: Dashboard, Records, Users, Downtime, Audit
+│       │   ├── UserDashboard.jsx   # User dashboard + records
+│       │   └── DowntimePage.jsx    # Full-page maintenance notice
 │       └── utils/
 │           ├── api.js          # ApiClient class (fetch wrapper with session headers)
 │           └── format.js       # Date/currency/status formatting utilities
 ├── models/
 │   ├── User.js                 # User model (name, email, hashed password, role, active)
 │   ├── GCRecord.js             # Gift card record model
+│   ├── Downtime.js             # Scheduled downtime model
 │   └── AuditLog.js             # Audit log model
 ├── routes/
 │   ├── auth.js                 # POST /login, GET /me, POST /change-password
@@ -123,11 +142,13 @@ gc-management-app/
 │   ├── gcRecords.js            # CRUD records + pay + bulk-pay + undo-pay
 │   ├── stats.js                # GET /user, GET /admin (aggregated stats)
 │   ├── audit.js                # GET audit logs (admin only)
+│   ├── downtime.js             # Public status + admin schedule/start/stop/cancel
 │   └── export.js               # GET /csv, GET /excel (admin only)
 ├── middleware/
 │   └── auth.js                 # Session auth, adminOnly, userOnly middleware
 ├── utils/
-│   └── audit.js                # logAction helper for AuditLog
+│   ├── audit.js                # logAction helper for AuditLog
+│   └── downtime.js             # Time-window status, overlap, and serialization helpers
 ├── scripts/
 │   └── init-admin.js           # Script to create initial admin account
 ├── server.js                   # Express server, MongoDB connection, route mounting
@@ -143,8 +164,9 @@ gc-management-app/
 ### Structure
 - Single-page app with React Router.
 - `AuthProvider` wraps the entire app, managing auth state via `localStorage`.
-- Three pages: `Login`, `AdminDashboard`, `UserDashboard`.
-- Admin dashboard uses tabs (Dashboard, Records, Users, Audit) within a single component.
+- Four pages/views: `Login`, `AdminDashboard`, `UserDashboard`, `DowntimePage`.
+- Admin dashboard uses tabs (Dashboard, Records, Users, Downtime, Audit) within a single component.
+- `DowntimeProvider` polls `/api/downtime/status` every 20 seconds; a 503 `DOWNTIME_ACTIVE` response also updates it immediately.
 - All CSS is in a single `client/src/index.css` file.
 
 ### API Calls
@@ -152,6 +174,7 @@ gc-management-app/
 - The client reads the saved user profile from `localStorage` and sends `x-user-id` / `x-user-email` headers.
 - In development, the base URL is `http://localhost:5000`. In production, it is empty (same origin).
 - On 401/403 responses, the client reports the error but keeps the session; logout only happens when the user clicks **Logout**.
+- On 503 `DOWNTIME_ACTIVE`, the client emits a browser event that immediately switches regular users to the maintenance page.
 - File downloads use `api.downloadFile()` which sends the same session headers and returns a raw `Response` for blob handling.
 
 ### Formatting Utilities
@@ -217,6 +240,13 @@ gc-management-app/
 | `GET /api/stats/user` | Yes | No (userOnly) | User's own aggregated stats |
 | `GET /api/stats/admin` | Yes | Yes | Admin aggregated stats with per-user breakdown |
 | `GET /api/audit` | Yes | Yes | Paginated audit logs |
+| `GET /api/downtime/status` | No | No | Public current/upcoming downtime status |
+| `GET /api/downtime` | Yes | Yes | List downtime entries with current/upcoming summary |
+| `POST /api/downtime` | Yes | Yes | Schedule a future window or start one immediately |
+| `POST /api/downtime/:id/start` | Yes | Yes | Start a future scheduled window now |
+| `POST /api/downtime/:id/stop` | Yes | Yes | Stop active downtime early |
+| `POST /api/downtime/:id/cancel` | Yes | Yes | Cancel future scheduled downtime |
+| `DELETE /api/downtime/:id` | Yes | Yes | Delete completed/cancelled entry |
 | `GET /api/export/csv` | Yes | Yes | CSV export of filtered records |
 | `GET /api/export/excel` | Yes | Yes | Excel export of filtered records |
 | `GET /api/health` | No | No | Health check |
@@ -283,15 +313,31 @@ gc-management-app/
 ### AuditLog Model (`models/AuditLog.js`)
 | Field | Type | Details |
 |---|---|---|
-| `action` | String | Enum of 13 action types |
+| `action` | String | Enum of supported action types |
 | `performedBy` | ObjectId (ref: User) | Required |
-| `targetType` | String | `user` or `record` |
+| `targetType` | String | `user`, `record`, `provider`, or `downtime` |
 | `targetId` | ObjectId | Required |
 | `metadata` | Mixed | Additional context (varies by action) |
 | `ipAddress` | String | Client IP |
 | `createdAt`/`updatedAt` | Date | Auto via `timestamps: true` |
 
 **Indexes:** `{ performedBy: 1 }`, `{ action: 1 }`, `{ targetType: 1, targetId: 1 }`, `{ createdAt: -1 }`
+
+### Downtime Model (`models/Downtime.js`)
+| Field | Type | Details |
+|---|---|---|
+| `title` | String | Optional, max 120 chars |
+| `message` | String | Optional user-facing message, max 500 chars |
+| `startAt` | Date | Required, stored as UTC |
+| `endAt` | Date | Required, must be after `startAt` and in the future at creation |
+| `status` | String | `scheduled`, `active`, `completed`, or `cancelled` |
+| `startedAt` / `stoppedAt` / `cancelledAt` | Date | Administrative action timestamps |
+| `stoppedBy` / `cancelledBy` / `createdBy` | ObjectId (ref: User) | Audit references |
+| `createdAt`/`updatedAt` | Date | Auto via `timestamps: true` |
+
+**Indexes:** `{ status: 1 }`, `{ startAt: 1, endAt: 1 }`, `{ status: 1, startAt: 1 }`
+
+**Effective status:** open windows (`scheduled`/`active`) are evaluated against the current server time. A window becomes active at `startAt` and completed at `endAt` even if the stored status has not been refreshed.
 
 ---
 
@@ -306,11 +352,12 @@ gc-management-app/
 6. The session remains active until the user clicks **Logout**. A 401/403 does not clear it automatically.
 
 ### Authorization Rules
-- **`auth` middleware** — Resolves the user from the validated `x-user-id` / `x-user-email` session headers and checks `active` status.
+- **`auth` middleware** — Resolves the user from the validated `x-user-id` / `x-user-email` session headers and checks `active` status. During active downtime it returns `503 DOWNTIME_ACTIVE` for non-admin roles.
 - **`adminOnly` middleware** — Requires `user.role === 'admin'`. Returns 403 otherwise.
 - **`userOnly` middleware** — Requires `user.role === 'user'`. Returns 403 otherwise.
 - **Ownership checks** — In GC record routes, users can only access their own records (`record.user === req.userId`). Admin bypasses ownership.
 - **Admin protection** — Admin users cannot be modified or deleted by other admins via the user management API.
+- **Downtime bypass** — Administrators are never blocked by downtime and are the only role allowed to manage downtime entries.
 
 ### Password Security
 - Hashed with bcrypt, 12 salt rounds.
@@ -387,28 +434,32 @@ npm run init-admin
 
 ## Testing
 
-### Playwright (E2E)
-Playwright is a dev dependency. Test files exist in the project root as `*.mjs` scripts:
-- `test-e2e.mjs` — End-to-end flow tests
-- `verify-production.mjs` — Production environment verification
-- `verify-fixes.mjs` — Regression verification
-- `verify-mobile.mjs` — Mobile viewport testing
-- `visual-audit.mjs` — Visual UI audit
-- `comprehensive-audit.mjs` — Comprehensive testing
-- `test-custom-domain.mjs` — Custom domain verification
-- `measure-audit.mjs` — Performance/audit measurement
-- `final-screenshots.mjs` — Screenshot capture
+Tests are split into unit, API integration, and Playwright end-to-end coverage for the downtime feature. The existing `tests/api-test.js` and `tests/playwright-check.js` remain local-only.
 
-### Important Test Cases
-- Login/logout flow for Admin and User.
-- Admin can view all records; User can only view own records.
-- GC record creation with duplicate GC + PIN rejection.
-- GC record edit does not reject against itself (same record ID excluded from duplicate check).
-- Payment status: single pay, bulk pay, undo pay.
-- User management: create, edit, disable, enable, reset password, delete.
-- Audit log generation for all tracked actions.
-- Responsive layout at mobile and desktop viewports.
-- Export CSV and Excel downloads.
+### Commands
+```bash
+# Unit tests (no server or database required)
+npm run test:downtime:unit
+
+# Integration tests against a running server (default http://localhost:5001)
+TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \
+TEST_USER_EMAIL=... TEST_USER_PASSWORD=... \
+API_BASE=http://localhost:5001 npm run test:downtime:api
+
+# Playwright end-to-end tests
+TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \
+TEST_USER_EMAIL=... TEST_USER_PASSWORD=... \
+UI_BASE=http://localhost:5001 npm run test:downtime:e2e
+```
+
+### Downtime Coverage
+- Time-window status calculation and validation (unit).
+- Schedule, overlap rejection, start now, stop early, cancel, delete guards.
+- Public status/upcoming data and administrator-only authorization.
+- Regular-user API blocking during downtime while admin access and login remain available.
+- Automatic activation at start time and automatic expiration at end time.
+- Admin UI scheduling/start/stop/cancel, upcoming ribbon, maintenance page, and mobile rendering.
+- Audit logging for downtime actions.
 
 ### Recommended Viewports for Responsive Testing
 ```

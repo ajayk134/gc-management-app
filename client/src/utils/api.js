@@ -36,8 +36,14 @@ class ApiClient {
     const data = isFormData ? await response.blob() : await response.json();
 
     if (!response.ok) {
-      // Do not auto-logout on auth errors; only logout when explicitly clicked
-      throw new Error(data.error || 'Request failed');
+      // Do not auto-logout on auth errors; only logout when explicitly clicked.
+      const error = new Error(data.error || 'Request failed');
+      error.code = data.code;
+      error.downtime = data.downtime;
+      if (response.status === 503 && data.code === 'DOWNTIME_ACTIVE') {
+        window.dispatchEvent(new CustomEvent('gc:downtime-active', { detail: data.downtime }));
+      }
+      throw error;
     }
 
     return data;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
+import DowntimeRibbon from '../components/DowntimeRibbon';
 import toast from 'react-hot-toast';
 
 export default function Login() {
@@ -31,6 +32,8 @@ export default function Login() {
       <div className="login-card">
         <h1 className="login-title">GC Management</h1>
         <p className="login-subtitle">Gift Card Management System</p>
+
+        <DowntimeRibbon showActive />
         
         {error && <div className="login-error">{error}</div>}
         

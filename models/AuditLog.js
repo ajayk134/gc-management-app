@@ -9,7 +9,9 @@ const auditLogSchema = new mongoose.Schema({
       'record_created', 'record_edited', 'record_deleted', 'record_paid_back',
       'bulk_paid_back', 'login_success', 'login_failed',
       'provider_added', 'provider_removed',
-      'record_shared', 'record_unshared', 'bulk_shared', 'bulk_unshared'
+      'record_shared', 'record_unshared', 'bulk_shared', 'bulk_unshared',
+      'downtime_scheduled', 'downtime_started', 'downtime_stopped',
+      'downtime_cancelled', 'downtime_deleted'
     ]
   },
   performedBy: {
@@ -19,7 +21,7 @@ const auditLogSchema = new mongoose.Schema({
   },
   targetType: {
     type: String,
-    enum: ['user', 'record', 'provider'],
+    enum: ['user', 'record', 'provider', 'downtime'],
     required: true
   },
   targetId: {

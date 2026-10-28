@@ -12,6 +12,7 @@ const statsRoutes = require('./routes/stats');
 const auditRoutes = require('./routes/audit');
 const exportRoutes = require('./routes/export');
 const providerRoutes = require('./routes/providers');
+const downtimeRoutes = require('./routes/downtime');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,6 +50,7 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/providers', providerRoutes);
+app.use('/api/downtime', downtimeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
