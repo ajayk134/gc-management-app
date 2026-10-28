@@ -508,13 +508,11 @@ body.modal-open { overflow: hidden; }
   min-width: 150px;
 }
 
-/* Native date/time controls render their value through browser-internal
-   ::-webkit-datetime-edit* pseudo-elements. Do not restyle those internals:
-   forcing flex layout, widths, or clipping on them breaks alignment and
-   hides the selected value in Safari (especially iOS). Only size the host
-   input here so the native picker stays intact. */
+/* Native date and time controls keep their browser picker and internal
+   layout. Only the host input is sized here; forcing line-heights or
+   restyling the WebKit shadow fields causes clipping and misalignment. */
 .form-input[type="date"],
-.form-input[type="datetime-local"],
+.form-input[type="time"],
 .form-input[type="month"] {
   box-sizing: border-box;
   min-width: 0;
@@ -529,28 +527,42 @@ body.modal-open { overflow: hidden; }
 }
 
 .form-input[type="date"]::-webkit-clear-button,
-.form-input[type="datetime-local"]::-webkit-clear-button,
+.form-input[type="time"]::-webkit-clear-button,
 .form-input[type="month"]::-webkit-clear-button,
 .form-input[type="date"]::-webkit-inner-spin-button,
-.form-input[type="datetime-local"]::-webkit-inner-spin-button,
+.form-input[type="time"]::-webkit-inner-spin-button,
 .form-input[type="month"]::-webkit-inner-spin-button {
   display: none;
 }
 
 .form-input[type="date"]::-webkit-calendar-picker-indicator,
-.form-input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.form-input[type="time"]::-webkit-calendar-picker-indicator,
 .form-input[type="month"]::-webkit-calendar-picker-indicator {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 0;
   opacity: 0.6;
   cursor: pointer;
 }
 
 .form-input[type="date"]::-webkit-calendar-picker-indicator:hover,
-.form-input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+.form-input[type="time"]::-webkit-calendar-picker-indicator:hover,
 .form-input[type="month"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
+}
+
+/* Each downtime window is one full-width field. Date and time sit side by
+   side when there is room and wrap to full-width rows on very narrow
+   screens, so native controls are never squeezed or clipped. */
+.downtime-datetime-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.downtime-datetime-fields .form-input {
+  flex: 1 1 9rem;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .form-row {
@@ -561,18 +573,6 @@ body.modal-open { overflow: hidden; }
 }
 
 .form-row > .form-group { min-width: 0; }
-
-/* Keep the modal's date/time inputs the same width/height as every other
-   form control so they cannot overflow their grid cell. WebKit aligns the
-   native value to the top of the box, so a host-level line-height nudges it
-   back to the vertical centre without touching the browser internals. */
-.form-input.form-input-datetime[type="datetime-local"] {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  line-height: 33px;
-}
 
 /* ---------- Tables ---------- */
 .table-container {
@@ -1587,16 +1587,12 @@ input[type="checkbox"] {
   }
 
   .form-input[type="date"],
-  .form-input[type="datetime-local"],
+  .form-input[type="time"],
   .form-input[type="month"] {
     height: 44px;
     min-height: 44px;
     padding: 0 0.75rem;
     font-size: 16px;
-  }
-
-  .form-input.form-input-datetime[type="datetime-local"] {
-    line-height: 37px;
   }
 
   .btn:not(.btn-sm) {
@@ -1607,8 +1603,8 @@ input[type="checkbox"] {
 
   .btn-sm { min-height: 36px; }
 
-  .modal-footer { display: flex; }
-  .modal-footer .btn { flex: 1; }
+  .modal-footer { display: flex; flex-wrap: wrap; }
+  .modal-footer .btn { flex: 1 1 auto; }
 
   .filter-bar {
     flex-direction: column;
@@ -1937,9 +1933,9 @@ input[type="checkbox"] {
   transition: background-color 9999s ease-out 0s;
 }
 
-/* Date inputs in dark mode */
+/* Date and time inputs in dark mode */
 [data-theme="dark"] .form-input[type="date"],
-[data-theme="dark"] .form-input[type="datetime-local"],
+[data-theme="dark"] .form-input[type="time"],
 [data-theme="dark"] .form-input[type="month"] { color-scheme: dark; }
 [data-theme="dark"] .filter-bar .form-input-date { color-scheme: dark; }
 [data-theme="dark"] .filter-bar .form-input-date::-webkit-calendar-picker-indicator { cursor: pointer; }

@@ -54,6 +54,15 @@ const toLocalInput = (value) => {
   return local.toISOString().slice(0, 16);
 };
 
+async function fillDowntimeWindow(scope, startValue, endValue) {
+  const start = toLocalInput(startValue);
+  const end = toLocalInput(endValue);
+  await scope.locator('#downtime-start').fill(start.slice(0, 10));
+  await scope.locator('#downtime-start-time').fill(start.slice(11, 16));
+  await scope.locator('#downtime-end').fill(end.slice(0, 10));
+  await scope.locator('#downtime-end-time').fill(end.slice(11, 16));
+}
+
 (async () => {
   assert.ok(ADMIN.email && ADMIN.password && USER.email && USER.password, 'TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD, TEST_USER_EMAIL and TEST_USER_PASSWORD are required');
   const loginRes = await fetch(BASE + '/api/auth/login', {
@@ -99,8 +108,7 @@ const toLocalInput = (value) => {
       const modal = adminPage.locator('.modal');
       await modal.locator('input[type="text"]').fill(title);
       await modal.locator('textarea').fill('E2E maintenance message');
-      await modal.locator('input[type="datetime-local"]').nth(0).fill(toLocalInput(Date.now() + 60 * 60 * 1000));
-      await modal.locator('input[type="datetime-local"]').nth(1).fill(toLocalInput(Date.now() + 2 * 60 * 60 * 1000));
+      await fillDowntimeWindow(modal, Date.now() + 60 * 60 * 1000, Date.now() + 2 * 60 * 60 * 1000);
       await modal.getByRole('button', { name: 'Schedule', exact: true }).click();
       await adminPage.getByText('Downtime scheduled').first().waitFor({ timeout: 15000 });
       await adminPage.getByRole('cell', { name: new RegExp(title) }).waitFor({ timeout: 15000 });
@@ -164,8 +172,7 @@ const toLocalInput = (value) => {
       await adminPage.getByRole('button', { name: '+ Schedule Downtime' }).click();
       const form = adminPage.locator('.modal');
       await form.locator('input[type="text"]').fill(cancelTitle);
-      await form.locator('input[type="datetime-local"]').nth(0).fill(toLocalInput(Date.now() + 4 * 60 * 60 * 1000));
-      await form.locator('input[type="datetime-local"]').nth(1).fill(toLocalInput(Date.now() + 5 * 60 * 60 * 1000));
+      await fillDowntimeWindow(form, Date.now() + 4 * 60 * 60 * 1000, Date.now() + 5 * 60 * 60 * 1000);
       await form.getByRole('button', { name: 'Schedule', exact: true }).click();
       await adminPage.getByText('Downtime scheduled').first().waitFor({ timeout: 15000 });
       const row = adminPage.locator('tr', { hasText: cancelTitle }).first();

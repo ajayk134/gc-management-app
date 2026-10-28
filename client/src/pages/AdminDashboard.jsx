@@ -914,12 +914,21 @@ function toLocalDateTimeInput(value) {
   return local.toISOString().slice(0, 16);
 }
 
+function splitLocalDateTimeInput(value) {
+  const [date = '', time = ''] = String(value || '').split('T');
+  return { date, time: time.slice(0, 5) };
+}
+
 function defaultDowntimeForm() {
+  const start = splitLocalDateTimeInput(toLocalDateTimeInput(Date.now() + 60 * 60 * 1000));
+  const end = splitLocalDateTimeInput(toLocalDateTimeInput(Date.now() + 2 * 60 * 60 * 1000));
   return {
     title: '',
     message: '',
-    startAt: toLocalDateTimeInput(Date.now() + 60 * 60 * 1000),
-    endAt: toLocalDateTimeInput(Date.now() + 2 * 60 * 60 * 1000)
+    startDate: start.date,
+    startTime: start.time,
+    endDate: end.date,
+    endTime: end.time
   };
 }
 
@@ -980,10 +989,11 @@ function AdminDowntime() {
   };
 
   const buildPayload = (immediate = false) => {
-    const start = immediate ? new Date() : new Date(formData.startAt);
-    const end = new Date(formData.endAt);
+    const toLocalDate = (date, time) => (date && time ? new Date(`${date}T${time}`) : null);
+    const start = immediate ? new Date() : toLocalDate(formData.startDate, formData.startTime);
+    const end = toLocalDate(formData.endDate, formData.endTime);
 
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       throw new Error('Please choose valid start and end date/time values');
     }
     if (end <= start) {
@@ -1271,26 +1281,48 @@ function AdminDowntime() {
                     placeholder="Scheduled maintenance"
                   />
                 </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="downtime-start">Start date &amp; time *</label>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="downtime-start">Start date &amp; time *</label>
+                  <div className="downtime-datetime-fields">
                     <input
-                      type="datetime-local"
+                      type="date"
                       id="downtime-start"
-                      className="form-input form-input-datetime"
-                      value={formData.startAt}
-                      onChange={e => setFormData({ ...formData, startAt: e.target.value })}
+                      className="form-input"
+                      value={formData.startDate}
+                      onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                      aria-label="Start date"
+                      required
+                    />
+                    <input
+                      type="time"
+                      id="downtime-start-time"
+                      className="form-input"
+                      value={formData.startTime}
+                      onChange={e => setFormData({ ...formData, startTime: e.target.value })}
+                      aria-label="Start time"
                       required
                     />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="downtime-end">End date &amp; time *</label>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="downtime-end">End date &amp; time *</label>
+                  <div className="downtime-datetime-fields">
                     <input
-                      type="datetime-local"
+                      type="date"
                       id="downtime-end"
-                      className="form-input form-input-datetime"
-                      value={formData.endAt}
-                      onChange={e => setFormData({ ...formData, endAt: e.target.value })}
+                      className="form-input"
+                      value={formData.endDate}
+                      onChange={e => setFormData({ ...formData, endDate: e.target.value })}
+                      aria-label="End date"
+                      required
+                    />
+                    <input
+                      type="time"
+                      id="downtime-end-time"
+                      className="form-input"
+                      value={formData.endTime}
+                      onChange={e => setFormData({ ...formData, endTime: e.target.value })}
+                      aria-label="End time"
                       required
                     />
                   </div>
