@@ -37,7 +37,7 @@ client/src/                  React frontend (Vite, React 18)
   ├── pages/Login.jsx        Login page
   ├── pages/AdminDashboard.jsx  Admin: Dashboard, Records, Users, Audit tabs
   ├── pages/UserDashboard.jsx   User: Dashboard + Records
-  ├── utils/api.js           ApiClient class (fetch wrapper with JWT)
+  ├── utils/api.js           ApiClient class (fetch wrapper with session headers)
   └── utils/format.js        Date/currency/status formatting
 
 server.js                    Express entry point, MongoDB connection
@@ -52,7 +52,7 @@ routes/                      Express route handlers
   ├── stats.js               Aggregated statistics
   ├── audit.js               Audit log listing (admin only)
   └── export.js              CSV + Excel export (admin only)
-middleware/auth.js           JWT auth, adminOnly, userOnly
+middleware/auth.js           Session auth, adminOnly, userOnly
 utils/audit.js               logAction helper
 scripts/init-admin.js        Create initial admin account
 ```
@@ -67,10 +67,10 @@ scripts/init-admin.js        Create initial admin account
 
 ## Authentication Rules
 
-- JWT tokens expire after **7 days**.
-- Token is stored in `localStorage` (key: `token`).
-- Sent as `Authorization: Bearer <token>` header.
-- On 401 (non-login), frontend clears auth and redirects to `/login`.
+- Sessions are persistent until the user explicitly logs out.
+- The returned user profile is stored in `localStorage` (key: `user`).
+- Requests send `x-user-id` and `x-user-email` headers. No JWT is issued or stored.
+- On 401/403, the frontend reports the error but **does not** clear the session or redirect to `/login`.
 - Passwords hashed with bcrypt (12 rounds). Never stored in plain text.
 - The `User` model `toJSON()` strips the password field from all responses.
 
@@ -143,7 +143,7 @@ const existing = await GCRecord.findOne({
 ### NEVER expose, log, or store in documentation:
 - Gift Card PINs (`giftCardPin`)
 - Passwords
-- JWT secrets
+- Session identifiers
 - API tokens (GitHub, Render)
 - MongoDB connection strings
 - Environment variable values
@@ -238,10 +238,11 @@ Test at these viewport sizes:
 - Pagination: `{ records: [...], pagination: { total, page, pages, limit } }`.
 - Do not bypass RBAC. Do not add unauthenticated endpoints (except `/api/health` and `/api/auth/login`).
 
-### Rate Limiting
-- General API: 200 requests per 15 minutes per IP.
-- Auth endpoints: 20 requests per 15 minutes per IP.
-- Behind Render proxy, `trust proxy` is enabled in production.
+### Session Authentication
+- Protected routes resolve the active user from `x-user-id` / `x-user-email` headers.
+- Invalid or unknown session users must return 401, never 500.
+- Do not accept `userId` / `email` from request bodies or query strings as authentication.
+- Sessions persist until explicit logout; do not add automatic logout on 401/403.
 
 ## Database Guidelines
 
@@ -263,7 +264,8 @@ After making changes, test:
 - Login with valid credentials (admin and user).
 - Login with invalid credentials (should fail).
 - Login with disabled account (should get 403).
-- Token expiry / invalid token handling.
+- Invalid/unknown `x-user-id` should get 401 (never 500).
+- Session survives page reload; 401/403 does not auto-logout; explicit logout clears it.
 
 ### Authorization
 - Admin can access `/api/users`, `/api/audit`, `/api/export/*`.

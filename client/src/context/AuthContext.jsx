@@ -8,6 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    localStorage.removeItem('token');
     const savedUser = localStorage.getItem('user');
     
     if (savedUser) {
@@ -22,6 +23,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const data = await api.post('/api/auth/login', { email, password });
+    localStorage.removeItem('token');
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -29,6 +31,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     setUser(null);
   };
 

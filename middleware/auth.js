@@ -1,14 +1,17 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 
 const auth = async (req, res, next) => {
   try {
     let user = null;
 
-    // Try to get user from custom headers (for session-based auth without tokens)
-    const userId = req.header('x-user-id') || req.header('X-User-Id') || req.body?.userId || req.query?.userId;
-    const userEmail = req.header('x-user-email') || req.header('X-User-Email') || req.body?.email || req.query?.email;
+    const userId = req.header('x-user-id');
+    const userEmail = req.header('x-user-email');
 
     if (userId) {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
       user = await User.findById(userId).select('-password');
     } else if (userEmail) {
       user = await User.findOne({ email: userEmail.toLowerCase() }).select('-password');

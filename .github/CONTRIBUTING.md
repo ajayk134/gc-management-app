@@ -20,7 +20,6 @@ npm install
 
 Create a `.env` file with:
 - `MONGODB_URI` — Your MongoDB connection string
-- `JWT_SECRET` — A secure random string
 - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` — Optional admin defaults
 
 Start the backend: `npm start`
@@ -29,6 +28,7 @@ Start the frontend dev server: `npx vite --config vite.config.js`
 ## Testing
 
 - Verify login/logout for both Admin and User roles.
+- Verify the persistent session survives a reload and only clears on explicit logout.
 - Test GC record CRUD operations.
 - Test duplicate GC + PIN rejection (same user) and acceptance (different users).
 - Test payment actions (single pay, bulk pay, undo).
@@ -52,7 +52,7 @@ Start the frontend dev server: `npx vite --config vite.config.js`
 - Never commit secrets (`.env`, API keys, tokens, connection strings).
 - Never expose Gift Card PINs in logs or documentation.
 - Never weaken authentication or authorization checks.
-- Never bypass rate limiting or CORS restrictions.
+- Never bypass session authentication or CORS restrictions.
 
 ## Deployment
 

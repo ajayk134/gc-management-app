@@ -24,8 +24,9 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 
 ### Authentication
 - Email + password login for Admin and User roles.
-- JWT-based authentication with 7-day token expiry.
-- Token stored in `localStorage` and sent via `Authorization: Bearer <token>` header.
+- Persistent browser session: the logged-in user profile is stored in `localStorage` and restored on reload.
+- Authenticated API requests send `x-user-id` and `x-user-email` headers (no JWT or token expiry).
+- The session lasts until the user clicks **Logout**; 401/403 responses do not auto-log-out.
 - Failed login attempts and successful logins are recorded in audit logs.
 - Disabled accounts are blocked at login with a 403 response.
 - Self-service password change (requires current password).
@@ -72,9 +73,8 @@ Browser (React SPA)
         │
   Express API (/api/*)
         │
-  ├── Auth middleware (JWT verification)
+  ├── Auth middleware (persistent session headers)
   ├── RBAC middleware (adminOnly / userOnly)
-  ├── Rate limiting (general + auth-specific)
   ├── CORS (whitelist of origins)
   │
   └── MongoDB (Mongoose ODM)
@@ -84,7 +84,8 @@ Browser (React SPA)
 ```
 
 **Key technologies:**
-- **Backend:** Node.js >= 18, Express 4, Mongoose 8, JWT (jsonwebtoken), bcryptjs
+- **Backend:** Node.js >= 18, Express 4, Mongoose 8, bcryptjs
+- **Authentication:** persistent `localStorage` session with user headers (no JWT)
 - **Frontend:** React 18, React Router 6, Vite 5, react-hot-toast, lucide-react
 - **Database:** MongoDB (via Mongoose), database name: `gc_management`
 - **Exports:** CSV (built-in), Excel via `xlsx` library
@@ -110,7 +111,7 @@ gc-management-app/
 │       │   ├── AdminDashboard.jsx  # Admin tabs: Dashboard, Records, Users, Audit
 │       │   └── UserDashboard.jsx   # User dashboard + records
 │       └── utils/
-│           ├── api.js          # ApiClient class (fetch wrapper with JWT)
+│           ├── api.js          # ApiClient class (fetch wrapper with session headers)
 │           └── format.js       # Date/currency/status formatting utilities
 ├── models/
 │   ├── User.js                 # User model (name, email, hashed password, role, active)
@@ -124,7 +125,7 @@ gc-management-app/
 │   ├── audit.js                # GET audit logs (admin only)
 │   └── export.js               # GET /csv, GET /excel (admin only)
 ├── middleware/
-│   └── auth.js                 # JWT auth, adminOnly, userOnly middleware
+│   └── auth.js                 # Session auth, adminOnly, userOnly middleware
 ├── utils/
 │   └── audit.js                # logAction helper for AuditLog
 ├── scripts/
@@ -148,10 +149,10 @@ gc-management-app/
 
 ### API Calls
 - All API calls go through `client/src/utils/api.js` — a custom `ApiClient` class.
-- The client reads the JWT token from `localStorage` and attaches it as `Authorization: Bearer <token>`.
+- The client reads the saved user profile from `localStorage` and sends `x-user-id` / `x-user-email` headers.
 - In development, the base URL is `http://localhost:5000`. In production, it is empty (same origin).
-- On 401 responses (except login), the client clears auth state and redirects to `/login`.
-- File downloads use `api.downloadFile()` which returns a raw `Response` for blob handling.
+- On 401/403 responses, the client reports the error but keeps the session; logout only happens when the user clicks **Logout**.
+- File downloads use `api.downloadFile()` which sends the same session headers and returns a raw `Response` for blob handling.
 
 ### Formatting Utilities
 - `formatCurrency(amount)` — Formats as INR currency (₹).
@@ -160,10 +161,11 @@ gc-management-app/
 - `getStatusColor(status)` / `getStatusLabel(status)` — Map `pending`/`paid_back` to CSS classes and labels.
 
 ### Authentication State
-- On mount, `AuthContext` reads `token` and `user` from `localStorage`.
-- `login()` calls the API, stores token + user, sets state.
-- `logout()` clears localStorage and state.
+- On mount, `AuthContext` reads `user` from `localStorage` and removes any legacy `token` value.
+- `login()` calls the API, stores the user profile, and sets state.
+- `logout()` clears the saved user (and any legacy token) and state.
 - `isAdmin` / `isUser` are derived from `user.role`.
+- The session is persistent until explicit logout; expiring/invalid sessions are not auto-cleared.
 
 ### Admin/User UI Separation
 - `ProtectedRoute` component enforces role-based routing.
@@ -184,21 +186,19 @@ gc-management-app/
 ### Express Server (`server.js`)
 - Listens on `process.env.PORT` (default 5000).
 - In production: serves static files from `client/dist/` and handles SPA routing with `*` fallback.
-- Trusts proxy in production for correct rate limiting behind Render.
 
 ### Middleware Stack
 1. **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`.
-2. **Rate limiting** — General: 200 req/15min on `/api/*`. Auth: 20 req/15min on `/api/auth/*`.
-3. **Compression** — gzip responses.
-4. **Body parsing** — JSON with 10MB limit.
-5. **Cookie parser** — For optional cookie-based token.
-6. **CORS** — Whitelist: `localhost:5173`, `localhost:3000`, `gc-management-app.onrender.com`, `giftcardmanager.duckdns.org`. Credentials enabled.
+2. **Compression** — gzip responses.
+3. **Body parsing** — JSON with 10MB limit.
+4. **Cookie parser** — Parses cookies (not used for authentication).
+5. **CORS** — Whitelist: `localhost:5173`, `localhost:3000`, `gc-management-app.onrender.com`, `giftcardmanager.duckdns.org`. Credentials enabled.
 
 ### API Routes
 
 | Route Group | Auth Required | Admin Only | Description |
 |---|---|---|---|
-| `POST /api/auth/login` | No | No | Login, returns JWT |
+| `POST /api/auth/login` | No | No | Login, returns user profile |
 | `GET /api/auth/me` | Yes | No | Current user info |
 | `POST /api/auth/change-password` | Yes | No | Self password change |
 | `GET /api/users` | Yes | Yes | List users with stats |
@@ -300,12 +300,13 @@ gc-management-app/
 ### Authentication Flow
 1. User submits email + password to `POST /api/auth/login`.
 2. Server validates credentials via `bcrypt.compare()`.
-3. If valid, server creates JWT with `{ userId, role }` payload, 7-day expiry.
-4. Token returned in JSON response; frontend stores in `localStorage`.
-5. Subsequent requests include `Authorization: Bearer <token>` header.
+3. If valid, the server returns the user profile (`id`, `name`, `email`, `role`). No JWT is issued.
+4. Frontend stores the profile in `localStorage`; it is restored on page reload.
+5. Subsequent requests send `x-user-id` and `x-user-email` headers.
+6. The session remains active until the user clicks **Logout**. A 401/403 does not clear it automatically.
 
 ### Authorization Rules
-- **`auth` middleware** — Verifies JWT, loads user, checks `active` status.
+- **`auth` middleware** — Resolves the user from the validated `x-user-id` / `x-user-email` session headers and checks `active` status.
 - **`adminOnly` middleware** — Requires `user.role === 'admin'`. Returns 403 otherwise.
 - **`userOnly` middleware** — Requires `user.role === 'user'`. Returns 403 otherwise.
 - **Ownership checks** — In GC record routes, users can only access their own records (`record.user === req.userId`). Admin bypasses ownership.
@@ -324,14 +325,11 @@ gc-management-app/
 | Variable | Purpose | Notes |
 |---|---|---|
 | `MONGODB_URI` | MongoDB connection string | Required. Database: `gc_management` |
-| `JWT_SECRET` | Secret for signing JWT tokens | Has insecure fallback in code; set in production |
 | `ADMIN_EMAIL` | Default admin email | Has fallback in code. Set in production. |
 | `ADMIN_PASSWORD` | Default admin password | Has fallback in code. **Change in production.** |
 | `ADMIN_NAME` | Default admin display name | Has fallback in code. |
 | `PORT` | Server port | Default: 5000 |
 | `NODE_ENV` | Environment mode | Set to `production` on Render |
-| `RATE_LIMIT_MAX` | General rate limit per 15min | Default: 200 |
-| `AUTH_RATE_LIMIT_MAX` | Auth rate limit per 15min | Default: 20 |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | Default includes localhost + production URLs |
 | `GITHUB_TOKEN` | GitHub personal access token | For repository access |
 | `GITHUB_USERNAME` | GitHub username | For repository identification |
@@ -358,7 +356,7 @@ cd gc-management-app
 npm install
 
 # Set environment variables (create .env file)
-# Required: MONGODB_URI, JWT_SECRET
+# Required: MONGODB_URI
 # Optional: ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME, PORT
 
 # Start the development server
@@ -458,10 +456,9 @@ MongoDB Atlas (gc_management database)
 
 ### Measures Implemented
 - **Password hashing** — bcrypt with 12 salt rounds.
-- **JWT authentication** — 7-day expiry, verified on every protected request.
+- **Persistent sessions** — The saved user profile identifies the session until explicit logout.
 - **RBAC** — Admin-only middleware on sensitive routes.
 - **Ownership checks** — Users can only access their own GC records.
-- **Rate limiting** — 200 req/15min general, 20 req/15min for auth endpoints.
 - **CORS** — Whitelist of specific origins. Credentials enabled.
 - **Security headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`.
 - **Input validation** — Required fields, non-negative amounts, paid ≤ amount, min password length.
@@ -504,9 +501,9 @@ MongoDB Atlas (gc_management database)
 - Verify network connectivity and DNS resolution.
 
 ### Authentication Failure
-- Ensure `JWT_SECRET` is set. The code has a fallback, but it should not be used in production.
-- Check that the token is being sent in the `Authorization` header.
-- Tokens expire after 7 days.
+- Check that the saved `user` profile exists in `localStorage` and that requests include `x-user-id` / `x-user-email` headers.
+- If the saved profile is stale, click **Logout** and sign in again.
+- Sessions are persistent until explicit logout; 401/403 responses do not clear local storage.
 
 ### CORS Errors
 - Verify the request origin is in `ALLOWED_ORIGINS`.
