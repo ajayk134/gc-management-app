@@ -1275,7 +1275,7 @@ function AdminDowntime() {
                     <label className="form-label">Start date &amp; time *</label>
                     <input
                       type="datetime-local"
-                      className="form-input"
+                      className="form-input form-input-datetime"
                       value={formData.startAt}
                       onChange={e => setFormData({ ...formData, startAt: e.target.value })}
                       required
@@ -1285,7 +1285,7 @@ function AdminDowntime() {
                     <label className="form-label">End date &amp; time *</label>
                     <input
                       type="datetime-local"
-                      className="form-input"
+                      className="form-input form-input-datetime"
                       value={formData.endAt}
                       onChange={e => setFormData({ ...formData, endAt: e.target.value })}
                       required

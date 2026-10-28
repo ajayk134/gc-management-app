@@ -587,6 +587,67 @@ body.modal-open { overflow: hidden; }
   gap: 1rem;
 }
 
+.form-row > .form-group { min-width: 0; }
+
+/* Native datetime-local controls can misalign and overflow narrow modals.
+   Keep them visually identical to regular inputs while preserving the
+   browser's built-in date/time picker. */
+.form-input.form-input-datetime[type="datetime-local"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  line-height: normal;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  line-height: normal;
+  text-align: left;
+  font-size: inherit;
+}
+
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+}
+
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-text,
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-month-field,
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-day-field,
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-year-field,
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-hour-field,
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-minute-field,
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-ampm-field {
+  min-width: 0;
+  padding: 0;
+  line-height: normal;
+  font-size: inherit;
+}
+
+.form-input.form-input-datetime[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+  padding: 0 0 0 0.25rem;
+}
+
 /* ---------- Tables ---------- */
 .table-container {
   overflow-x: auto;
@@ -1603,6 +1664,14 @@ input[type="checkbox"] {
   .form-input[type="datetime-local"],
   .form-input[type="month"] {
     min-height: 44px;
+  }
+
+  .form-input.form-input-datetime[type="datetime-local"] {
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding: 0 0.75rem;
+    font-size: 16px;
   }
 
   .btn:not(.btn-sm) {
