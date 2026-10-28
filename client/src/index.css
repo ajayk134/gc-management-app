@@ -508,16 +508,24 @@ body.modal-open { overflow: hidden; }
   min-width: 150px;
 }
 
-/* Native date inputs: guarantee the selected value is always visible
-   without clicking, especially on iOS where the internal WebKit date
-   field can clip text when using a fixed height + custom line-height. */
+/* Native date/time controls render their value through browser-internal
+   ::-webkit-datetime-edit* pseudo-elements. Do not restyle those internals:
+   forcing flex layout, widths, or clipping on them breaks alignment and
+   hides the selected value in Safari (especially iOS). Only size the host
+   input here so the native picker stays intact. */
 .form-input[type="date"],
 .form-input[type="datetime-local"],
 .form-input[type="month"] {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  line-height: normal;
+  text-align: left;
   color-scheme: light;
   cursor: pointer;
-  min-height: 38px;
-  line-height: normal;
 }
 
 .form-input[type="date"]::-webkit-clear-button,
@@ -532,9 +540,11 @@ body.modal-open { overflow: hidden; }
 .form-input[type="date"]::-webkit-calendar-picker-indicator,
 .form-input[type="datetime-local"]::-webkit-calendar-picker-indicator,
 .form-input[type="month"]::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
   opacity: 0.6;
   cursor: pointer;
-  padding-left: 0.25rem;
 }
 
 .form-input[type="date"]::-webkit-calendar-picker-indicator:hover,
@@ -543,109 +553,25 @@ body.modal-open { overflow: hidden; }
   opacity: 1;
 }
 
-.form-input[type="date"]::-webkit-datetime-edit,
-.form-input[type="datetime-local"]::-webkit-datetime-edit,
-.form-input[type="month"]::-webkit-datetime-edit {
-  display: inline-flex;
-  align-items: center;
-  color: var(--gray-800);
-  -webkit-text-fill-color: var(--gray-800);
-  font-size: 0.875rem;
-  line-height: normal;
-  min-height: 1.5em;
-  padding: 0;
-}
-
-.form-input[type="date"]::-webkit-datetime-edit-text,
-.form-input[type="date"]::-webkit-datetime-edit-month-field,
-.form-input[type="date"]::-webkit-datetime-edit-day-field,
-.form-input[type="date"]::-webkit-datetime-edit-year-field,
-.form-input[type="datetime-local"]::-webkit-datetime-edit-text,
-.form-input[type="datetime-local"]::-webkit-datetime-edit-hour-field,
-.form-input[type="datetime-local"]::-webkit-datetime-edit-minute-field,
-.form-input[type="datetime-local"]::-webkit-datetime-edit-ampm-field,
-.form-input[type="month"]::-webkit-datetime-edit-text,
-.form-input[type="month"]::-webkit-datetime-edit-month-field,
-.form-input[type="month"]::-webkit-datetime-edit-year-field {
-  color: var(--gray-800);
-  -webkit-text-fill-color: var(--gray-800);
-  font-size: 0.875rem;
-  line-height: normal;
-  padding: 0;
-}
-
-.form-input[type="date"]:focus::-webkit-datetime-edit,
-.form-input[type="datetime-local"]:focus::-webkit-datetime-edit,
-.form-input[type="month"]:focus::-webkit-datetime-edit {
-  color: var(--gray-800);
-  -webkit-text-fill-color: var(--gray-800);
-}
-
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+  min-width: 0;
 }
 
 .form-row > .form-group { min-width: 0; }
 
-/* Native datetime-local controls can misalign and overflow narrow modals.
-   Keep them visually identical to regular inputs while preserving the
-   browser's built-in date/time picker. */
+/* Keep the modal's date/time inputs the same width/height as every other
+   form control so they cannot overflow their grid cell. WebKit aligns the
+   native value to the top of the box, so a host-level line-height nudges it
+   back to the vertical centre without touching the browser internals. */
 .form-input.form-input-datetime[type="datetime-local"] {
   display: block;
   width: 100%;
+  min-width: 0;
   max-width: 100%;
-  min-width: 0;
-  height: var(--control-h);
-  min-height: var(--control-h);
-  padding: 0 0.75rem;
-  line-height: normal;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  line-height: normal;
-  text-align: left;
-  font-size: inherit;
-}
-
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  padding: 0;
-}
-
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-text,
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-month-field,
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-day-field,
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-year-field,
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-hour-field,
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-minute-field,
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-datetime-edit-ampm-field {
-  min-width: 0;
-  padding: 0;
-  line-height: normal;
-  font-size: inherit;
-}
-
-.form-input.form-input-datetime[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  flex: 0 0 auto;
-  margin: 0 0 0 auto;
-  padding: 0 0 0 0.25rem;
+  line-height: 33px;
 }
 
 /* ---------- Tables ---------- */
@@ -1663,15 +1589,14 @@ input[type="checkbox"] {
   .form-input[type="date"],
   .form-input[type="datetime-local"],
   .form-input[type="month"] {
+    height: 44px;
     min-height: 44px;
+    padding: 0 0.75rem;
+    font-size: 16px;
   }
 
   .form-input.form-input-datetime[type="datetime-local"] {
-    height: 44px;
-    min-height: 44px;
-    max-height: 44px;
-    padding: 0 0.75rem;
-    font-size: 16px;
+    line-height: 37px;
   }
 
   .btn:not(.btn-sm) {

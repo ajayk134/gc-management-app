@@ -1260,9 +1260,10 @@ function AdminDowntime() {
                   </div>
                 )}
                 <div className="form-group">
-                  <label className="form-label">Title</label>
+                  <label className="form-label" htmlFor="downtime-title">Title</label>
                   <input
                     type="text"
+                    id="downtime-title"
                     className="form-input"
                     value={formData.title}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
@@ -1272,9 +1273,10 @@ function AdminDowntime() {
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">Start date &amp; time *</label>
+                    <label className="form-label" htmlFor="downtime-start">Start date &amp; time *</label>
                     <input
                       type="datetime-local"
+                      id="downtime-start"
                       className="form-input form-input-datetime"
                       value={formData.startAt}
                       onChange={e => setFormData({ ...formData, startAt: e.target.value })}
@@ -1282,9 +1284,10 @@ function AdminDowntime() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">End date &amp; time *</label>
+                    <label className="form-label" htmlFor="downtime-end">End date &amp; time *</label>
                     <input
                       type="datetime-local"
+                      id="downtime-end"
                       className="form-input form-input-datetime"
                       value={formData.endAt}
                       onChange={e => setFormData({ ...formData, endAt: e.target.value })}
@@ -1293,8 +1296,9 @@ function AdminDowntime() {
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Message shown to users</label>
+                  <label className="form-label" htmlFor="downtime-message">Message shown to users</label>
                   <textarea
+                    id="downtime-message"
                     className="form-textarea"
                     value={formData.message}
                     onChange={e => setFormData({ ...formData, message: e.target.value })}
