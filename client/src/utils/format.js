@@ -50,3 +50,20 @@ export const hasAdjustment = (record) =>
   !!record && record.adjustedAmount !== undefined && record.adjustedAmount !== null;
 
 export const effectivePaid = (record) => (hasAdjustment(record) ? record.adjustedAmount : record.paid);
+
+
+export const formatCountdown = (target, now = new Date()) => {
+  const targetDate = toDate(target);
+  const current = toDate(now) || new Date();
+  if (!targetDate) return '';
+  const totalSeconds = Math.max(0, Math.floor((targetDate.getTime() - current.getTime()) / 1000));
+  if (totalSeconds === 0) return 'now';
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${pad2(minutes)}m`;
+  if (minutes > 0) return `${minutes}m ${pad2(seconds)}s`;
+  return `${seconds}s`;
+};

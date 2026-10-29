@@ -8,9 +8,6 @@ const toDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-// The stored status is a helpful record of administrative actions, but the
-// actual availability is always derived from the current time window. This
-// makes activation and expiration automatic even if no background worker ran.
 const effectiveStatus = (downtime, now = new Date()) => {
   const status = downtime.status || 'scheduled';
   if (status === 'cancelled' || status === 'completed') return status;
@@ -51,12 +48,13 @@ const findUpcomingDowntime = (now = new Date()) => (
   Downtime.findOne(upcomingFilter(now)).sort({ startAt: 1 })
 );
 
-const findOverlappingDowntime = ({ startAt, endAt, excludeId = null, now = new Date() }) => {
-  const lowerBound = startAt > now ? startAt : now;
+const findOverlappingDowntime = ({ startAt, endAt, excludeId = null }) => {
+  if (!startAt || !endAt) return Promise.resolve(null);
+
   const filter = {
     status: { $in: OPEN_STATUSES },
     startAt: { $lt: endAt },
-    endAt: { $gt: lowerBound }
+    $or: [{ endAt: null }, { endAt: { $gt: startAt } }]
   };
 
   if (excludeId) filter._id = { $ne: excludeId };
@@ -70,6 +68,58 @@ const downtimeWindowError = (startAt, endAt) => {
   return null;
 };
 
+const reconcileDowntimeStatuses = async (now = new Date()) => {
+  const current = toDate(now) || new Date();
+  let activated = 0;
+  let completed = 0;
+
+  const toActivate = await Downtime.find({
+    status: 'scheduled',
+    startAt: { $lte: current },
+    $or: [{ endAt: null }, { endAt: { $gt: current } }]
+  });
+
+  for (const downtime of toActivate) {
+    downtime.status = 'active';
+    if (!downtime.startedAt) {
+      downtime.startedAt = toDate(downtime.startAt) || current;
+    }
+    await downtime.save();
+    activated++;
+  }
+
+  const toComplete = await Downtime.find({
+    status: { $in: OPEN_STATUSES },
+    endAt: { $ne: null, $lte: current }
+  });
+
+  for (const downtime of toComplete) {
+    downtime.status = 'completed';
+    if (!downtime.stoppedAt) {
+      downtime.stoppedAt = toDate(downtime.endAt) || current;
+    }
+    await downtime.save();
+    completed++;
+  }
+
+  return { activated, completed, now: current };
+};
+
+const downtimeCountdown = (downtime, now = new Date()) => {
+  if (!downtime) return null;
+  const current = toDate(now) || new Date();
+  const status = effectiveStatus(downtime, current);
+  const startAt = toDate(downtime.startAt);
+  const endAt = toDate(downtime.endAt);
+  const target = status === 'active' ? endAt : (status === 'scheduled' ? startAt : null);
+  if (!target) return null;
+  return {
+    status,
+    targetAt: target,
+    remainingMs: Math.max(0, target.getTime() - current.getTime())
+  };
+};
+
 module.exports = {
   OPEN_STATUSES,
   effectiveStatus,
@@ -79,5 +129,7 @@ module.exports = {
   findActiveDowntime,
   findUpcomingDowntime,
   findOverlappingDowntime,
-  downtimeWindowError
+  downtimeWindowError,
+  reconcileDowntimeStatuses,
+  downtimeCountdown
 };

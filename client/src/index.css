@@ -2375,3 +2375,147 @@ input[type="checkbox"] {
   .downtime-window { grid-template-columns: 1fr; }
   .downtime-summary-grid { grid-template-columns: 1fr; }
 }
+
+.downtime-live-meta {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 0.125rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.downtime-control-card-active .downtime-live-meta {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.downtime-form-modal { max-width: 620px; }
+
+.downtime-optional {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.downtime-checkbox {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.125rem 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--gray-25);
+  cursor: pointer;
+}
+
+.downtime-checkbox input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
+}
+
+.downtime-checkbox span {
+  color: var(--gray-800);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.downtime-checkbox small {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.downtime-field-error {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--danger);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.form-input.is-invalid {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.form-input.is-invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-light);
+}
+
+.downtime-action-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.downtime-action-menu .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.downtime-action-menu-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 20;
+  min-width: 11.5rem;
+  padding: 0.3125rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-lg);
+}
+
+.downtime-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--gray-700);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.downtime-menu-item:hover {
+  background: var(--gray-100);
+  color: var(--gray-900);
+}
+
+.downtime-menu-item-danger { color: var(--danger); }
+.downtime-menu-item-danger:hover { background: var(--danger-bg); color: var(--danger); }
+
+[data-theme="dark"] .downtime-live-meta { background: var(--gray-100); color: var(--gray-600); }
+[data-theme="dark"] .downtime-control-card-active .downtime-live-meta { background: var(--danger-light); color: #fca5a5; }
+[data-theme="dark"] .downtime-checkbox { background: var(--surface-secondary); border-color: var(--gray-200); }
+[data-theme="dark"] .downtime-action-menu-list { background: var(--surface-elevated); border-color: var(--gray-200); }
+[data-theme="dark"] .downtime-menu-item { color: var(--gray-600); }
+[data-theme="dark"] .downtime-menu-item:hover { background: var(--gray-100); color: var(--gray-800); }
+[data-theme="dark"] .downtime-menu-item-danger { color: #fca5a5; }
+[data-theme="dark"] .downtime-menu-item-danger:hover { background: var(--danger-bg); color: #fca5a5; }
+[data-theme="dark"] .form-input.is-invalid { background: var(--danger-bg); border-color: var(--danger); }
+
+@media (max-width: 768px) {
+  .downtime-action-menu { width: 100%; }
+  .downtime-action-menu .btn { width: 100%; justify-content: center; }
+  .downtime-action-menu-list { left: 0; right: auto; width: 100%; }
+}

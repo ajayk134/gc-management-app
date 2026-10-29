@@ -56,17 +56,16 @@ async function apiReq(method, path, user, body) {
   const user = userLogin.data.user;
   assert.ok(admin && admin.id && user && user.id);
 
+  const createdDowntimeIds = [];
+
   async function cleanup() {
     await apiReq('PUT', '/api/downtime', admin, { enabled: false });
     const list = await apiReq('GET', '/api/downtime', admin);
     if (list.status !== 200) return;
     for (const item of list.data.downtimes) {
-      if (item.status === 'active') await apiReq('POST', `/api/downtime/${item._id}/stop`, admin);
-      if (item.status === 'scheduled') await apiReq('POST', `/api/downtime/${item._id}/cancel`, admin);
-    }
-    const refreshed = await apiReq('GET', '/api/downtime', admin);
-    for (const item of refreshed.data.downtimes) {
-      if (['completed', 'cancelled'].includes(item.status)) {
+      if (createdDowntimeIds.includes(String(item._id))) {
+        if (item.status === 'active') await apiReq('POST', `/api/downtime/${item._id}/stop`, admin);
+        if (item.status === 'scheduled') await apiReq('POST', `/api/downtime/${item._id}/cancel`, admin);
         await apiReq('DELETE', `/api/downtime/${item._id}`, admin);
       }
     }
@@ -81,25 +80,75 @@ async function apiReq(method, path, user, body) {
   let createdRecordId = null;
 
   try {
-    await test('admin can enable maintenance mode from the existing admin UI', async () => {
+    await test('admin can open the downtime workspace', async () => {
       await login(adminPage, ADMIN);
       await adminPage.getByRole('heading', { name: 'Admin Dashboard' }).waitFor({ timeout: 15000 });
       await adminPage.getByRole('button', { name: 'Downtime', exact: true }).click();
       await adminPage.getByRole('heading', { name: 'Maintenance & Downtime' }).waitFor({ timeout: 15000 });
-      await adminPage.getByRole('button', { name: 'Enable maintenance mode' }).click();
-      await adminPage.getByText('Maintenance mode enabled').first().waitFor({ timeout: 15000 });
-      await adminPage.getByText('New gift card submissions are paused').waitFor({ timeout: 15000 });
-      await adminPage.locator('.downtime-control-card-active').waitFor({ timeout: 15000 });
+      await adminPage.getByRole('button', { name: 'Schedule maintenance' }).waitFor({ timeout: 15000 });
     });
 
-    await test('user can log in and see an attractive maintenance banner while viewing existing records', async () => {
+    await test('admin can schedule, edit, and cancel a future window with the compact form', async () => {
+      await adminPage.getByRole('button', { name: 'Schedule maintenance' }).click();
+      const modal = adminPage.locator('.modal');
+      await modal.locator('#downtime-title').fill('E2E scheduled window');
+      await modal.getByRole('button', { name: 'Schedule maintenance' }).click();
+      await adminPage.getByText('Maintenance scheduled').first().waitFor({ timeout: 15000 });
+      await adminPage.getByText('E2E scheduled window').first().waitFor({ timeout: 15000 });
+      await adminPage.getByText('Next maintenance window is scheduled').waitFor({ timeout: 15000 });
+      await adminPage.getByText(/Starts in/).first().waitFor({ timeout: 15000 });
+
+      const listAfterCreate = await apiReq('GET', '/api/downtime', admin);
+      const created = listAfterCreate.data.downtimes.find(d => d.title === 'E2E scheduled window');
+      assert.ok(created);
+      createdDowntimeIds.push(String(created._id));
+      assert.equal(created.status, 'scheduled');
+
+      const row = adminPage.locator('tr', { hasText: 'E2E scheduled window' });
+      await row.getByRole('button', { name: /Manage/ }).click();
+      await row.getByRole('menuitem', { name: /Edit & reschedule/ }).click();
+
+      const editModal = adminPage.locator('.modal');
+      await editModal.locator('#downtime-title').fill('E2E rescheduled window');
+      await editModal.getByRole('button', { name: 'Save changes' }).click();
+      await adminPage.getByText('Maintenance window updated').first().waitFor({ timeout: 15000 });
+      await adminPage.getByText('E2E rescheduled window').first().waitFor({ timeout: 15000 });
+
+      const editedRow = adminPage.locator('tr', { hasText: 'E2E rescheduled window' });
+      await editedRow.getByRole('button', { name: /Manage/ }).click();
+      await editedRow.getByRole('menuitem', { name: /Cancel window/ }).click();
+      await adminPage.locator('.modal').getByRole('button', { name: 'Cancel window' }).click();
+      await adminPage.getByText('Scheduled maintenance cancelled').first().waitFor({ timeout: 15000 });
+      await adminPage.getByText('E2E rescheduled window').first().waitFor({ timeout: 15000 });
+      const badge = adminPage.locator('tr', { hasText: 'E2E rescheduled window' }).locator('.badge');
+      await badge.getByText('Cancelled').waitFor({ timeout: 15000 });
+    });
+
+    await test('admin can start maintenance immediately from the schedule form', async () => {
+      await adminPage.getByRole('button', { name: 'Schedule maintenance' }).click();
+      const modal = adminPage.locator('.modal');
+      await modal.locator('#downtime-title').fill('E2E instant window');
+      await modal.locator('.downtime-checkbox input').check();
+      await modal.getByRole('button', { name: 'Start maintenance' }).click();
+      await adminPage.getByText('Maintenance started').first().waitFor({ timeout: 15000 });
+      await adminPage.getByText('New gift card submissions are paused').waitFor({ timeout: 15000 });
+      await adminPage.locator('.downtime-control-card-active').waitFor({ timeout: 15000 });
+      await adminPage.getByRole('button', { name: 'End maintenance now' }).waitFor({ timeout: 15000 });
+
+      const list = await apiReq('GET', '/api/downtime', admin);
+      const active = list.data.downtimes.find(d => d.status === 'active');
+      assert.ok(active);
+      createdDowntimeIds.push(String(active._id));
+    });
+
+    await test('user can log in and see maintenance while viewing existing records', async () => {
       await login(userPage, USER);
       await userPage.getByRole('heading', { name: 'My Dashboard' }).waitFor({ timeout: 15000 });
       const ribbon = userPage.locator('.downtime-ribbon-live').first();
       await ribbon.waitFor({ timeout: 15000 });
       const ribbonText = await ribbon.innerText();
       assert.ok(ribbonText.includes('Maintenance mode is on'));
-      assert.ok(ribbonText.includes('Existing records remain available'));
+      assert.ok(ribbonText.includes('view existing records'));
       await userPage.getByRole('heading', { name: 'My Gift Cards' }).waitFor({ timeout: 15000 });
       assert.ok(await userPage.getByText('SHR-TEST-1').count() >= 1, 'existing records should remain visible');
       const addButton = userPage.getByRole('button', { name: 'Maintenance mode' });
@@ -118,14 +167,15 @@ async function apiReq(method, path, user, body) {
       assert.equal(r.data.code, 'DOWNTIME_ACTIVE');
     });
 
-    await test('admin can disable maintenance mode from the UI', async () => {
-      await adminPage.getByRole('button', { name: 'Disable maintenance mode' }).click();
-      await adminPage.getByText('Maintenance mode disabled').first().waitFor({ timeout: 15000 });
+    await test('admin can end maintenance from the primary action', async () => {
+      await adminPage.getByRole('button', { name: 'End maintenance now' }).click();
+      await adminPage.locator('.modal').getByRole('button', { name: 'End maintenance' }).click();
+      await adminPage.getByText('Maintenance ended').first().waitFor({ timeout: 15000 });
       await adminPage.getByText('Application is live').waitFor({ timeout: 15000 });
       await adminPage.locator('.downtime-control-card-active').waitFor({ state: 'detached', timeout: 15000 });
     });
 
-    await test('user sees the banner clear and can create a new record after disabling', async () => {
+    await test('user sees the banner clear and can create a new record after maintenance ends', async () => {
       await userPage.reload({ waitUntil: 'networkidle' });
       await userPage.getByRole('heading', { name: 'My Dashboard' }).waitFor({ timeout: 15000 });
       assert.equal(await userPage.locator('.downtime-ribbon-live').count(), 0);
@@ -150,7 +200,9 @@ async function apiReq(method, path, user, body) {
     });
 
     await test('mobile layout keeps the maintenance banner and disabled create control usable', async () => {
-      await apiReq('PUT', '/api/downtime', admin, { enabled: true });
+      const toggle = await apiReq('PUT', '/api/downtime', admin, { enabled: true, title: 'E2E mobile maintenance' });
+      assert.equal(toggle.status, 200);
+      if (toggle.data.current?._id) createdDowntimeIds.push(String(toggle.data.current._id));
       const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
       const mobilePage = await mobileContext.newPage();
       await login(mobilePage, USER);

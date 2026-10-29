@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt, Clock, Banknote, Power, Wrench } from 'lucide-react';
+import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt, Clock, Banknote, Power, Wrench, CalendarClock, ChevronDown, Pencil, Play, Trash2, X } from 'lucide-react';
+import useNow from '../hooks/useNow';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import DowntimeRibbon from '../components/DowntimeRibbon';
 import { useDowntime } from '../context/DowntimeContext';
 import api from '../utils/api';
-import { formatCurrency, formatDate, formatDateTime, getStatusColor, getStatusLabel } from '../utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatCountdown, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
@@ -932,18 +933,88 @@ function splitLocalDateTimeInput(value) {
   return { date, time: time.slice(0, 5) };
 }
 
+function nextQuarter(offsetMinutes = 60) {
+  const d = new Date(Date.now() + offsetMinutes * 60000);
+  d.setSeconds(0, 0);
+  const remainder = d.getMinutes() % 15;
+  if (remainder !== 0) d.setMinutes(d.getMinutes() + (15 - remainder));
+  return d;
+}
+
 function defaultDowntimeForm() {
-  const start = splitLocalDateTimeInput(toLocalDateTimeInput(Date.now() + 60 * 60 * 1000));
-  const end = splitLocalDateTimeInput(toLocalDateTimeInput(Date.now() + 2 * 60 * 60 * 1000));
+  const startDate = nextQuarter(60);
+  const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+  const start = splitLocalDateTimeInput(toLocalDateTimeInput(startDate));
+  const end = splitLocalDateTimeInput(toLocalDateTimeInput(endDate));
   return {
     title: '',
     message: '',
     startDate: start.date,
     startTime: start.time,
     endDate: end.date,
-    endTime: end.time
+    endTime: end.time,
+    immediate: false
   };
 }
+
+function downtimeToForm(item) {
+  const start = splitLocalDateTimeInput(toLocalDateTimeInput(item.startAt));
+  const end = splitLocalDateTimeInput(toLocalDateTimeInput(item.endAt));
+  return {
+    title: item.title || '',
+    message: item.message || '',
+    startDate: start.date,
+    startTime: start.time,
+    endDate: end.date,
+    endTime: end.time,
+    immediate: false
+  };
+}
+
+function combineLocalDate(date, time) {
+  if (!date || !time) return null;
+  const parsed = new Date(`${date}T${time}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function validateDowntimeForm(form) {
+  const errors = {};
+  const startAt = form.immediate ? new Date() : combineLocalDate(form.startDate, form.startTime);
+  const endAt = combineLocalDate(form.endDate, form.endTime);
+
+  if (!form.immediate && !startAt) {
+    errors.start = 'Choose a start date and time';
+  } else if (startAt && startAt.getTime() < Date.now() - 60000) {
+    errors.start = 'Start must not be in the past';
+  }
+
+  if (!endAt) {
+    errors.end = 'Choose an end date and time';
+  } else if (endAt <= new Date()) {
+    errors.end = 'End must be in the future';
+  } else if (startAt && endAt <= startAt) {
+    errors.end = 'End must be after the start';
+  }
+
+  return { errors, startAt, endAt };
+}
+
+const TIMEZONE_NAME = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+  } catch {
+    return 'local time';
+  }
+})();
+
+const TIMEZONE_OFFSET = (() => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'shortOffset' }).formatToParts(new Date());
+    return parts.find(part => part.type === 'timeZoneName')?.value || '';
+  } catch {
+    return '';
+  }
+})();
 
 const downtimeStatusLabels = {
   scheduled: 'Scheduled',
@@ -959,19 +1030,36 @@ const downtimeStatusClasses = {
   cancelled: 'badge-disabled'
 };
 
+function DowntimeActionMenu({ open, onToggle, children }) {
+  return (
+    <div className="downtime-action-menu">
+      <button type="button" className="btn btn-outline btn-sm" onClick={onToggle} aria-expanded={open}>
+        Manage <ChevronDown size={13} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="downtime-action-menu-list" role="menu">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminDowntime() {
   const { refresh: refreshDowntimeStatus } = useDowntime();
+  const now = useNow();
   const [data, setData] = useState({ downtimes: [], active: false, current: null, upcoming: null });
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [formState, setFormState] = useState(null);
   const [formData, setFormData] = useState(defaultDowntimeForm);
+  const [touched, setTouched] = useState({});
+  const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [actionId, setActionId] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
-  const [formError, setFormError] = useState('');
-  const [toggling, setToggling] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
-  useModalScrollLock(showForm || Boolean(pendingAction));
+  useModalScrollLock(Boolean(formState) || Boolean(pendingAction));
 
   const fetchData = useCallback(async (showLoader = false) => {
     if (showLoader) setLoading(true);
@@ -996,66 +1084,80 @@ function AdminDowntime() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const openForm = () => {
-    setFormData(defaultDowntimeForm());
-    setFormError('');
-    setShowForm(true);
-  };
+  useEffect(() => {
+    if (!openMenuId) return;
+    const closeMenu = () => setOpenMenuId(null);
+    document.addEventListener('click', closeMenu);
+    return () => document.removeEventListener('click', closeMenu);
+  }, [openMenuId]);
 
-  const toggleMaintenance = async () => {
-    const nextEnabled = !data.active;
-    setToggling(true);
-    try {
-      await api.put('/api/downtime', { enabled: nextEnabled });
-      toast.success(nextEnabled ? 'Maintenance mode enabled' : 'Maintenance mode disabled');
-      await fetchData(false);
+  const transitionAt = data.active ? data.current?.endAt : data.upcoming?.startAt;
+  useEffect(() => {
+    if (!transitionAt) return;
+    const delay = new Date(transitionAt).getTime() - Date.now() + 600;
+    if (!Number.isFinite(delay) || delay > 2147483647) return;
+    const timer = setTimeout(() => {
+      fetchData(false);
       refreshDowntimeStatus();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setToggling(false);
-    }
+    }, Math.max(0, delay));
+    return () => clearTimeout(timer);
+  }, [transitionAt, fetchData, refreshDowntimeStatus]);
+
+  const openCreate = () => {
+    setFormData(defaultDowntimeForm());
+    setTouched({});
+    setFormError('');
+    setFormState({ mode: 'create', id: null });
   };
 
-  const buildPayload = (immediate = false) => {
-    const toLocalDate = (date, time) => (date && time ? new Date(`${date}T${time}`) : null);
-    const start = immediate ? new Date() : toLocalDate(formData.startDate, formData.startTime);
-    const end = toLocalDate(formData.endDate, formData.endTime);
+  const openEdit = (item) => {
+    setOpenMenuId(null);
+    setFormData(downtimeToForm(item));
+    setTouched({});
+    setFormError('');
+    setFormState({ mode: 'edit', id: item._id });
+  };
 
-    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new Error('Please choose valid start and end date/time values');
-    }
-    if (end <= start) {
-      throw new Error('End date/time must be after the start date/time');
-    }
-    if (end <= new Date()) {
-      throw new Error('End date/time must be in the future');
-    }
+  const closeForm = () => {
+    if (saving) return;
+    setFormState(null);
+    setTouched({});
+    setFormError('');
+  };
 
-    return {
+  const updateField = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    setTouched(prev => ({ ...prev, [field]: true }));
+    setFormError('');
+  };
+
+  const validation = validateDowntimeForm(formData);
+  const errors = validation.errors;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setTouched({ start: true, end: true });
+    if (Object.keys(errors).length > 0) return;
+
+    const payload = {
       title: formData.title.trim(),
       message: formData.message.trim(),
-      startAt: start.toISOString(),
-      endAt: end.toISOString()
+      startAt: validation.startAt.toISOString(),
+      endAt: validation.endAt.toISOString()
     };
-  };
-
-  const createDowntime = async (immediate = false) => {
-    setFormError('');
-    let payload;
-    try {
-      payload = buildPayload(immediate);
-    } catch (err) {
-      setFormError(err.message);
-      return;
-    }
 
     setSaving(true);
+    setFormError('');
     try {
-      await api.post('/api/downtime', payload);
-      toast.success(immediate ? 'Downtime started now' : 'Downtime scheduled');
-      setShowForm(false);
-      setFormData(defaultDowntimeForm());
+      if (formState.mode === 'edit') {
+        await api.put(`/api/downtime/${formState.id}`, payload);
+        toast.success('Maintenance window updated');
+      } else {
+        await api.post('/api/downtime', payload);
+        toast.success(formData.immediate ? 'Maintenance started' : 'Maintenance scheduled');
+      }
+      setFormState(null);
+      setTouched({});
       await fetchData(false);
       refreshDowntimeStatus();
     } catch (err) {
@@ -1063,11 +1165,6 @@ function AdminDowntime() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await createDowntime(false);
   };
 
   const runAction = async () => {
@@ -1081,13 +1178,14 @@ function AdminDowntime() {
         await api.post(`/api/downtime/${downtime._id}/${type}`);
       }
       const messages = {
-        start: 'Downtime started immediately',
-        stop: 'Downtime stopped',
-        cancel: 'Scheduled downtime cancelled',
-        delete: 'Downtime entry deleted'
+        start: 'Maintenance started now',
+        stop: 'Maintenance ended',
+        cancel: 'Scheduled maintenance cancelled',
+        delete: 'Maintenance entry deleted'
       };
       toast.success(messages[type]);
       setPendingAction(null);
+      setOpenMenuId(null);
       await fetchData(false);
       refreshDowntimeStatus();
     } catch (err) {
@@ -1099,38 +1197,82 @@ function AdminDowntime() {
 
   const actionCopy = {
     start: {
-      title: 'Start downtime now',
+      title: 'Start maintenance now',
       message: 'New gift card submissions will be blocked immediately. Users can still sign in and view existing records. Continue?',
       confirmLabel: 'Start now',
       danger: false
     },
     stop: {
-      title: 'Stop active downtime',
-      message: 'End the active maintenance window now and allow new gift card submissions again?',
-      confirmLabel: 'Stop downtime',
+      title: 'End maintenance now',
+      message: 'End the active maintenance window and allow new gift card submissions again?',
+      confirmLabel: 'End maintenance',
       danger: true
     },
     cancel: {
-      title: 'Cancel scheduled downtime',
+      title: 'Cancel scheduled maintenance',
       message: 'Cancel this future maintenance window? Users will no longer see it as upcoming.',
-      confirmLabel: 'Cancel downtime',
+      confirmLabel: 'Cancel window',
       danger: true
     },
     delete: {
-      title: 'Delete downtime entry',
-      message: 'Delete this completed or cancelled downtime entry? This cannot be undone.',
+      title: 'Delete maintenance entry',
+      message: 'Delete this completed or cancelled entry? This cannot be undone.',
       confirmLabel: 'Delete',
       danger: true
     }
   };
 
   const confirmation = pendingAction ? actionCopy[pendingAction.type] : null;
+  const activeCountdown = data.active && data.current?.endAt ? formatCountdown(data.current.endAt, now) : null;
+  const upcomingCountdown = data.upcoming ? formatCountdown(data.upcoming.startAt, now) : null;
+
+  const primaryAction = data.active && data.current
+    ? { label: 'End maintenance now', kind: 'stop', downtime: data.current, icon: Power }
+    : data.upcoming
+      ? { label: 'Start next window', kind: 'start', downtime: data.upcoming, icon: Play }
+      : { label: 'Schedule maintenance', kind: 'create', icon: CalendarClock };
+
+  const handlePrimary = () => {
+    if (primaryAction.kind === 'create') {
+      openCreate();
+    } else {
+      setPendingAction({ type: primaryAction.kind, downtime: primaryAction.downtime });
+    }
+  };
+
+  const rowActions = (item) => {
+    const status = item.status;
+    if (status === 'scheduled') {
+      return (
+        <>
+          <button type="button" className="downtime-menu-item" role="menuitem" onClick={() => openEdit(item)}>
+            <Pencil size={14} aria-hidden="true" /> Edit &amp; reschedule
+          </button>
+          <button type="button" className="downtime-menu-item downtime-menu-item-danger" role="menuitem" onClick={() => { setOpenMenuId(null); setPendingAction({ type: 'cancel', downtime: item }); }}>
+            <X size={14} aria-hidden="true" /> Cancel window
+          </button>
+        </>
+      );
+    }
+    if (status === 'completed' || status === 'cancelled') {
+      return (
+        <button type="button" className="downtime-menu-item downtime-menu-item-danger" role="menuitem" onClick={() => { setOpenMenuId(null); setPendingAction({ type: 'delete', downtime: item }); }}>
+          <Trash2 size={14} aria-hidden="true" /> Delete entry
+        </button>
+      );
+    }
+    return null;
+  };
+
+  const PrimaryIcon = primaryAction.icon;
 
   return (
     <div>
       <div className="section-header">
-        <h2 className="section-title">Maintenance &amp; Downtime</h2>
-        <button type="button" className="btn btn-primary" onClick={openForm}>+ Schedule Downtime</button>
+        <div>
+          <h2 className="section-title">Maintenance &amp; Downtime</h2>
+          <p className="section-subtitle">Schedule automatic windows or control maintenance manually. Login and existing records stay available throughout.</p>
+        </div>
       </div>
 
       <div className={`downtime-control-card ${data.active ? 'downtime-control-card-active' : ''}`}>
@@ -1141,22 +1283,37 @@ function AdminDowntime() {
           <div className="downtime-control-copy">
             <span className="downtime-control-eyebrow">Maintenance mode</span>
             <strong className="downtime-control-title">
-              {data.active ? 'New gift card submissions are paused' : 'Application is live'}
+              {data.active
+                ? 'New gift card submissions are paused'
+                : data.upcoming
+                  ? 'Next maintenance window is scheduled'
+                  : 'Application is live'}
             </strong>
             <p className="downtime-control-text">
               {data.active
                 ? (data.current?.message || 'Users can still sign in and view existing records. Only new gift card submissions are blocked.')
-                : 'Enable maintenance mode to immediately block new gift card submissions while keeping existing records available.'}
+                : data.upcoming
+                  ? `${formatDateTime(data.upcoming.startAt)} to ${formatDateTime(data.upcoming.endAt)}`
+                  : 'No maintenance is scheduled. New gift card submissions are available to every role.'}
             </p>
+            {data.active && (
+              <span className="downtime-live-meta">
+                {activeCountdown ? `Ends in ${activeCountdown}` : 'Until ended manually'}
+              </span>
+            )}
+            {!data.active && data.upcoming && (
+              <span className="downtime-live-meta">Starts in {upcomingCountdown}</span>
+            )}
           </div>
         </div>
         <button
           type="button"
           className={`btn ${data.active ? 'btn-danger' : 'btn-primary'} downtime-control-button`}
-          onClick={toggleMaintenance}
-          disabled={toggling}
+          onClick={handlePrimary}
+          disabled={Boolean(actionId)}
         >
-          {toggling ? 'Updating...' : data.active ? 'Disable maintenance mode' : 'Enable maintenance mode'}
+          <PrimaryIcon size={15} aria-hidden="true" />
+          {primaryAction.label}
         </button>
       </div>
 
@@ -1164,23 +1321,23 @@ function AdminDowntime() {
         <div className={`downtime-summary-card ${data.active ? 'downtime-summary-card-active' : ''}`}>
           <span className="downtime-summary-label">Current status</span>
           <strong className="downtime-summary-value">
-            {data.active ? 'Downtime active' : 'Application available'}
+            {data.active ? 'Maintenance active' : 'Normal operation'}
           </strong>
           <span className="downtime-summary-meta">
             {data.active && data.current
-              ? (data.current.endAt ? `Until ${formatDateTime(data.current.endAt)}` : 'Until an administrator disables maintenance')
-              : 'All users can access the application and create records'}
+              ? (data.current.endAt ? `Creation reopens ${formatDateTime(data.current.endAt)}` : 'Creation stays paused until maintenance is ended manually')
+              : 'All users can create and view gift card records'}
           </span>
         </div>
         <div className="downtime-summary-card">
-          <span className="downtime-summary-label">Next scheduled</span>
+          <span className="downtime-summary-label">Next maintenance</span>
           <strong className="downtime-summary-value">
             {data.upcoming ? formatDateTime(data.upcoming.startAt) : 'None scheduled'}
           </strong>
           <span className="downtime-summary-meta">
             {data.upcoming
-              ? `Ends ${formatDateTime(data.upcoming.endAt)}${data.upcoming.title ? ` · ${data.upcoming.title}` : ''}`
-              : 'Schedule a window to notify users in advance'}
+              ? `Ends ${formatDateTime(data.upcoming.endAt)} · starts in ${upcomingCountdown}${data.upcoming.title ? ` · ${data.upcoming.title}` : ''}`
+              : 'Configure a start and end time to run maintenance automatically'}
           </span>
         </div>
       </div>
@@ -1190,8 +1347,8 @@ function AdminDowntime() {
       ) : data.downtimes.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">🛠️</div>
-          <div className="empty-state-text">No downtime scheduled</div>
-          <p className="text-muted" style={{ fontSize: '0.8125rem' }}>Schedule maintenance to notify users in advance.</p>
+          <div className="empty-state-text">No maintenance scheduled</div>
+          <p className="text-muted" style={{ fontSize: '0.8125rem' }}>Schedule a window to notify users in advance and pause new submissions automatically.</p>
         </div>
       ) : (
         <>
@@ -1209,6 +1366,7 @@ function AdminDowntime() {
               <tbody>
                 {data.downtimes.map(item => {
                   const status = item.status;
+                  const actions = rowActions(item);
                   return (
                     <tr key={item._id}>
                       <td className="text-nowrap">
@@ -1228,40 +1386,19 @@ function AdminDowntime() {
                       </td>
                       <td className="text-muted">{item.createdBy?.name || 'Administrator'}</td>
                       <td>
-                        <div className="action-buttons">
-                          {status === 'scheduled' && (
-                            <>
-                              <button
-                                type="button"
-                                className="btn btn-success btn-sm"
-                                onClick={() => setPendingAction({ type: 'start', downtime: item })}
-                                disabled={Boolean(actionId)}
-                              >Start now</button>
-                              <button
-                                type="button"
-                                className="btn btn-outline btn-sm"
-                                onClick={() => setPendingAction({ type: 'cancel', downtime: item })}
-                                disabled={Boolean(actionId)}
-                              >Cancel</button>
-                            </>
-                          )}
-                          {status === 'active' && (
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-sm"
-                              onClick={() => setPendingAction({ type: 'stop', downtime: item })}
-                              disabled={Boolean(actionId)}
-                            >Stop now</button>
-                          )}
-                          {(status === 'completed' || status === 'cancelled') && (
-                            <button
-                              type="button"
-                              className="btn btn-danger-outline btn-sm"
-                              onClick={() => setPendingAction({ type: 'delete', downtime: item })}
-                              disabled={Boolean(actionId)}
-                            >Delete</button>
-                          )}
-                        </div>
+                        {actions ? (
+                          <DowntimeActionMenu
+                            open={openMenuId === item._id}
+                            onToggle={(event) => {
+                              event.stopPropagation();
+                              setOpenMenuId(openMenuId === item._id ? null : item._id);
+                            }}
+                          >
+                            {actions}
+                          </DowntimeActionMenu>
+                        ) : (
+                          <span className="text-muted text-xs">{status === 'active' ? 'Use primary action' : ''}</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1273,6 +1410,7 @@ function AdminDowntime() {
           <div className="mobile-view">
             {data.downtimes.map(item => {
               const status = item.status;
+              const actions = rowActions(item);
               return (
                 <div key={item._id} className="mobile-record downtime-mobile-card">
                   <div className="mobile-record-header">
@@ -1289,20 +1427,19 @@ function AdminDowntime() {
                     <div><span className="text-muted">Created by:</span> {item.createdBy?.name || 'Administrator'}</div>
                     {item.message && <div><span className="text-muted">Message:</span> {item.message}</div>}
                   </div>
-                  <div className="mobile-record-actions">
-                    {status === 'scheduled' && (
-                      <>
-                        <button type="button" className="btn btn-success btn-sm" onClick={() => setPendingAction({ type: 'start', downtime: item })} disabled={Boolean(actionId)}>Start now</button>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setPendingAction({ type: 'cancel', downtime: item })} disabled={Boolean(actionId)}>Cancel</button>
-                      </>
-                    )}
-                    {status === 'active' && (
-                      <button type="button" className="btn btn-danger btn-sm" onClick={() => setPendingAction({ type: 'stop', downtime: item })} disabled={Boolean(actionId)}>Stop now</button>
-                    )}
-                    {(status === 'completed' || status === 'cancelled') && (
-                      <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => setPendingAction({ type: 'delete', downtime: item })} disabled={Boolean(actionId)}>Delete</button>
-                    )}
-                  </div>
+                  {actions && (
+                    <div className="mobile-record-actions">
+                      <DowntimeActionMenu
+                        open={openMenuId === item._id}
+                        onToggle={(event) => {
+                          event.stopPropagation();
+                          setOpenMenuId(openMenuId === item._id ? null : item._id);
+                        }}
+                      >
+                        {actions}
+                      </DowntimeActionMenu>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1310,12 +1447,12 @@ function AdminDowntime() {
         </>
       )}
 
-      {showForm && (
-        <div className="modal-overlay" onClick={() => { if (!saving) setShowForm(false); }}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+      {formState && (
+        <div className="modal-overlay" onClick={closeForm}>
+          <div className="modal downtime-form-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Schedule Downtime</h3>
-              <button className="btn-icon" onClick={() => setShowForm(false)} disabled={saving} aria-label="Close">&times;</button>
+              <h3 className="modal-title">{formState.mode === 'edit' ? 'Edit maintenance window' : 'Schedule maintenance'}</h3>
+              <button className="btn-icon" onClick={closeForm} disabled={saving} aria-label="Close">&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -1325,84 +1462,117 @@ function AdminDowntime() {
                     <span>{formError}</span>
                   </div>
                 )}
+
                 <div className="form-group">
-                  <label className="form-label" htmlFor="downtime-title">Title</label>
+                  <label className="form-label" htmlFor="downtime-title">Title <span className="downtime-optional">optional</span></label>
                   <input
                     type="text"
                     id="downtime-title"
                     className="form-input"
                     value={formData.title}
-                    onChange={e => setFormData({ ...formData, title: e.target.value })}
+                    onChange={e => updateField('title', e.target.value)}
                     maxLength={120}
                     placeholder="Scheduled maintenance"
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="downtime-start">Start date &amp; time *</label>
-                  <div className="downtime-datetime-fields">
+
+                {formState.mode === 'create' && (
+                  <label className="downtime-checkbox">
                     <input
-                      type="date"
-                      id="downtime-start"
-                      className="form-input"
-                      value={formData.startDate}
-                      onChange={e => setFormData({ ...formData, startDate: e.target.value })}
-                      aria-label="Start date"
-                      required
+                      type="checkbox"
+                      checked={formData.immediate}
+                      onChange={e => updateField('immediate', e.target.checked)}
                     />
-                    <input
-                      type="time"
-                      id="downtime-start-time"
-                      className="form-input"
-                      value={formData.startTime}
-                      onChange={e => setFormData({ ...formData, startTime: e.target.value })}
-                      aria-label="Start time"
-                      required
-                    />
+                    <span>Start immediately</span>
+                    <small>Blocks new submissions as soon as you save.</small>
+                  </label>
+                )}
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="downtime-start">Start date &amp; time *</label>
+                    <div className="downtime-datetime-fields">
+                      <input
+                        type="date"
+                        id="downtime-start"
+                        className={`form-input ${touched.start && errors.start ? 'is-invalid' : ''}`}
+                        value={formData.startDate}
+                        onChange={e => updateField('startDate', e.target.value)}
+                        onBlur={() => setTouched(prev => ({ ...prev, start: true }))}
+                        aria-label="Start date"
+                        disabled={formData.immediate}
+                        required={!formData.immediate}
+                      />
+                      <input
+                        type="time"
+                        id="downtime-start-time"
+                        className={`form-input ${touched.start && errors.start ? 'is-invalid' : ''}`}
+                        value={formData.startTime}
+                        onChange={e => updateField('startTime', e.target.value)}
+                        onBlur={() => setTouched(prev => ({ ...prev, start: true }))}
+                        aria-label="Start time"
+                        disabled={formData.immediate}
+                        required={!formData.immediate}
+                      />
+                    </div>
+                    {formData.immediate ? (
+                      <small className="form-hint">Starts immediately when saved.</small>
+                    ) : touched.start && errors.start ? (
+                      <small className="downtime-field-error">{errors.start}</small>
+                    ) : null}
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="downtime-end">End date &amp; time *</label>
+                    <div className="downtime-datetime-fields">
+                      <input
+                        type="date"
+                        id="downtime-end"
+                        className={`form-input ${touched.end && errors.end ? 'is-invalid' : ''}`}
+                        value={formData.endDate}
+                        onChange={e => updateField('endDate', e.target.value)}
+                        onBlur={() => setTouched(prev => ({ ...prev, end: true }))}
+                        aria-label="End date"
+                        required
+                      />
+                      <input
+                        type="time"
+                        id="downtime-end-time"
+                        className={`form-input ${touched.end && errors.end ? 'is-invalid' : ''}`}
+                        value={formData.endTime}
+                        onChange={e => updateField('endTime', e.target.value)}
+                        onBlur={() => setTouched(prev => ({ ...prev, end: true }))}
+                        aria-label="End time"
+                        required
+                      />
+                    </div>
+                    {touched.end && errors.end && <small className="downtime-field-error">{errors.end}</small>}
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="downtime-end">End date &amp; time *</label>
-                  <div className="downtime-datetime-fields">
-                    <input
-                      type="date"
-                      id="downtime-end"
-                      className="form-input"
-                      value={formData.endDate}
-                      onChange={e => setFormData({ ...formData, endDate: e.target.value })}
-                      aria-label="End date"
-                      required
-                    />
-                    <input
-                      type="time"
-                      id="downtime-end-time"
-                      className="form-input"
-                      value={formData.endTime}
-                      onChange={e => setFormData({ ...formData, endTime: e.target.value })}
-                      aria-label="End time"
-                      required
-                    />
-                  </div>
-                </div>
+
                 <div className="form-group">
                   <label className="form-label" htmlFor="downtime-message">Message shown to users</label>
                   <textarea
                     id="downtime-message"
                     className="form-textarea"
                     value={formData.message}
-                    onChange={e => setFormData({ ...formData, message: e.target.value })}
+                    onChange={e => updateField('message', e.target.value)}
                     maxLength={500}
                     placeholder="Optional message explaining the maintenance..."
                   />
-                  <small className="form-hint">{formData.message.length}/500 characters. Times are shown in your local time zone.</small>
+                  <small className="form-hint">{formData.message.length}/500 characters. Times use {TIMEZONE_NAME}{TIMEZONE_OFFSET ? ` (${TIMEZONE_OFFSET})` : ''} and are enforced in UTC.</small>
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)} disabled={saving}>Cancel</button>
-                <button type="button" className="btn btn-outline" onClick={() => createDowntime(true)} disabled={saving}>
-                  {saving ? 'Please wait...' : 'Start Immediately'}
-                </button>
+                <button type="button" className="btn btn-outline" onClick={closeForm} disabled={saving}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Please wait...' : 'Schedule'}
+                  {saving
+                    ? 'Please wait...'
+                    : formState.mode === 'edit'
+                      ? 'Save changes'
+                      : formData.immediate
+                        ? 'Start maintenance'
+                        : 'Schedule maintenance'}
                 </button>
               </div>
             </form>

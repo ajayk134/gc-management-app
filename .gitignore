@@ -14,3 +14,5 @@ tests/*
 !tests/downtime-unit-test.js
 !tests/downtime-api-test.js
 !tests/downtime-e2e.js
+!tests/downtime-scheduler-test.js
+!tests/downtime-restart-test.js

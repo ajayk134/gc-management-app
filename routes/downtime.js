@@ -17,8 +17,21 @@ const router = express.Router();
 
 const cleanText = (value, maxLength) => String(value || '').trim().slice(0, maxLength);
 
-// Public status endpoint. Intentionally exposes only the minimum information
-// needed to render the maintenance notice and upcoming-downtime ribbon.
+const parseWindow = (body) => {
+  const startAt = new Date(body.startAt);
+  const endAt = new Date(body.endAt);
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+    return { error: 'Valid start and end date/time are required' };
+  }
+  const windowError = downtimeWindowError(startAt, endAt);
+  if (windowError) return { error: windowError };
+  return { startAt, endAt };
+};
+
+const overlapResponse = (res) => (
+  res.status(409).json({ error: 'This window overlaps an existing scheduled or active downtime' })
+);
+
 router.get('/status', async (req, res) => {
   try {
     const now = new Date();
@@ -41,8 +54,6 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// All routes below are restricted to administrators. Administrators are also
-// exempt from the application-wide downtime guard so they can always manage it.
 router.use(auth, adminOnly);
 
 const setMaintenanceState = async (req, res) => {
@@ -65,6 +76,13 @@ const setMaintenanceState = async (req, res) => {
         if (req.body.message !== undefined) current.message = message;
         await current.save();
       } else {
+        const upcoming = await findUpcomingDowntime(now);
+        if (upcoming) {
+          return res.status(409).json({
+            error: 'A maintenance window is already scheduled. Start, reschedule, or cancel it before enabling maintenance now.'
+          });
+        }
+
         current = await Downtime.create({
           title,
           message,
@@ -115,8 +133,6 @@ const setMaintenanceState = async (req, res) => {
   }
 };
 
-// Toggle maintenance mode on/off. This is the primary endpoint used by the
-// admin dashboard switch.
 router.put('/', setMaintenanceState);
 router.post('/toggle', setMaintenanceState);
 
@@ -146,23 +162,15 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const startAt = new Date(req.body.startAt);
-    const endAt = new Date(req.body.endAt);
+    const parsed = parseWindow(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-      return res.status(400).json({ error: 'Valid start and end date/time are required' });
-    }
-
-    const windowError = downtimeWindowError(startAt, endAt);
-    if (windowError) return res.status(400).json({ error: windowError });
-
+    const { startAt, endAt } = parsed;
     const title = cleanText(req.body.title, 120) || 'Scheduled maintenance';
     const message = cleanText(req.body.message, 500);
 
-    const overlap = await findOverlappingDowntime({ startAt, endAt, now: new Date() });
-    if (overlap) {
-      return res.status(409).json({ error: 'This window overlaps an existing scheduled or active downtime' });
-    }
+    const overlap = await findOverlappingDowntime({ startAt, endAt });
+    if (overlap) return overlapResponse(res);
 
     const now = new Date();
     const isImmediate = startAt <= now;
@@ -191,6 +199,61 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid downtime ID' });
+    }
+
+    const downtime = await Downtime.findById(req.params.id);
+    if (!downtime) return res.status(404).json({ error: 'Downtime not found' });
+
+    const now = new Date();
+    if (effectiveStatus(downtime, now) !== 'scheduled') {
+      return res.status(400).json({ error: 'Only future scheduled downtime can be edited or rescheduled' });
+    }
+
+    const parsed = parseWindow(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+
+    const { startAt, endAt } = parsed;
+    const overlap = await findOverlappingDowntime({
+      startAt,
+      endAt,
+      excludeId: downtime._id
+    });
+    if (overlap) return overlapResponse(res);
+
+    const title = req.body.title !== undefined
+      ? (cleanText(req.body.title, 120) || 'Scheduled maintenance')
+      : downtime.title;
+    const message = req.body.message !== undefined
+      ? cleanText(req.body.message, 500)
+      : downtime.message;
+
+    const isImmediate = startAt <= now;
+    downtime.title = title;
+    downtime.message = message;
+    downtime.startAt = startAt;
+    downtime.endAt = endAt;
+    downtime.status = isImmediate ? 'active' : 'scheduled';
+    downtime.startedAt = isImmediate ? now : undefined;
+    await downtime.save();
+    await downtime.populate('createdBy', 'name email');
+
+    await logAction(isImmediate ? 'downtime_started' : 'downtime_rescheduled', req.userId, 'downtime', downtime._id, {
+      title: downtime.title,
+      startAt: downtime.startAt,
+      endAt: downtime.endAt
+    }, req.ip);
+
+    res.json({ downtime: serializeDowntime(downtime, now) });
+  } catch (error) {
+    console.error('Reschedule downtime error:', error);
+    res.status(500).json({ error: 'Failed to reschedule downtime' });
+  }
+});
+
 router.post('/:id/start', async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -212,8 +275,7 @@ router.post('/:id/start', async (req, res) => {
     const overlap = await findOverlappingDowntime({
       startAt: now,
       endAt: downtime.endAt,
-      excludeId: downtime._id,
-      now
+      excludeId: downtime._id
     });
     if (overlap) {
       return res.status(409).json({ error: 'Another downtime is already active or overlaps this window' });

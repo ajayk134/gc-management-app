@@ -195,6 +195,234 @@ async function login(email, password) {
     assert.ok(r.data.logs.every(l => l.action === 'downtime_started'));
   });
 
+  const hour = 60 * 60 * 1000;
+
+  async function createWindow(overrides = {}) {
+    const start = overrides.startAt || new Date(Date.now() + hour).toISOString();
+    const end = overrides.endAt || new Date(Date.now() + 2 * hour).toISOString();
+    return req('POST', '/api/downtime', {
+      user: admin,
+      body: {
+        title: overrides.title || 'API test maintenance',
+        message: overrides.message || 'API test window',
+        startAt: start,
+        endAt: end
+      }
+    });
+  }
+
+  async function removeWindow(item) {
+    if (!item) return;
+    if (item.status === 'scheduled') await req('POST', `/api/downtime/${item._id}/cancel`, { user: admin });
+    if (item.status === 'active') await req('POST', `/api/downtime/${item._id}/stop`, { user: admin });
+    await req('DELETE', `/api/downtime/${item._id}`, { user: admin });
+  }
+
+  await test('admin can schedule a future maintenance window', async () => {
+    const window = await createWindow({ title: 'Scheduled API window' });
+    assert.equal(window.status, 201);
+    assert.equal(window.data.downtime.status, 'scheduled');
+    assert.equal(window.data.downtime.title, 'Scheduled API window');
+
+    const status = await req('GET', '/api/downtime/status');
+    assert.equal(status.status, 200);
+    assert.equal(status.data.active, false);
+    assert.equal(status.data.upcoming._id, window.data.downtime._id);
+
+    const forbidden = await req('GET', '/api/downtime', { user });
+    assert.equal(forbidden.status, 403);
+
+    await removeWindow(window.data.downtime);
+  });
+
+  await test('invalid date ranges and missing values are rejected', async () => {
+    const inverted = await createWindow({
+      startAt: new Date(Date.now() + 2 * hour).toISOString(),
+      endAt: new Date(Date.now() + hour).toISOString()
+    });
+    assert.equal(inverted.status, 400);
+
+    const expired = await createWindow({
+      startAt: new Date(Date.now() - 2 * hour).toISOString(),
+      endAt: new Date(Date.now() - hour).toISOString()
+    });
+    assert.equal(expired.status, 400);
+
+    const missing = await req('POST', '/api/downtime', { user: admin, body: { title: 'Missing dates' } });
+    assert.equal(missing.status, 400);
+  });
+
+  await test('overlapping scheduled windows are rejected while adjacent windows are allowed', async () => {
+    const baseStart = Date.now() + 3 * hour;
+    const first = await createWindow({
+      title: 'Overlap base',
+      startAt: new Date(baseStart).toISOString(),
+      endAt: new Date(baseStart + hour).toISOString()
+    });
+    assert.equal(first.status, 201);
+
+    const overlap = await createWindow({
+      title: 'Overlap conflict',
+      startAt: new Date(baseStart + 30 * 60 * 1000).toISOString(),
+      endAt: new Date(baseStart + 2 * hour).toISOString()
+    });
+    assert.equal(overlap.status, 409);
+
+    const adjacent = await createWindow({
+      title: 'Adjacent window',
+      startAt: new Date(baseStart + hour).toISOString(),
+      endAt: new Date(baseStart + 2 * hour).toISOString()
+    });
+    assert.equal(adjacent.status, 201);
+
+    await removeWindow(first.data.downtime);
+    await removeWindow(adjacent.data.downtime);
+  });
+
+  await test('admin can edit and reschedule a scheduled window', async () => {
+    const window = await createWindow({ title: 'Original title' });
+    assert.equal(window.status, 201);
+
+    const newStart = Date.now() + 5 * hour;
+    const newEnd = newStart + 90 * 60 * 1000;
+    const updated = await req('PUT', `/api/downtime/${window.data.downtime._id}`, {
+      user: admin,
+      body: {
+        title: 'Rescheduled title',
+        message: 'Updated message',
+        startAt: new Date(newStart).toISOString(),
+        endAt: new Date(newEnd).toISOString()
+      }
+    });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.downtime.title, 'Rescheduled title');
+    assert.equal(updated.data.downtime.message, 'Updated message');
+    assert.equal(new Date(updated.data.downtime.startAt).getTime(), newStart);
+    assert.equal(updated.data.downtime.status, 'scheduled');
+
+    await removeWindow(updated.data.downtime);
+  });
+
+  await test('editing validates ranges and prevents overlaps', async () => {
+    const first = await createWindow({ title: 'Edit validation A' });
+    const second = await createWindow({
+      title: 'Edit validation B',
+      startAt: new Date(Date.now() + 4 * hour).toISOString(),
+      endAt: new Date(Date.now() + 5 * hour).toISOString()
+    });
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+
+    const inverted = await req('PUT', `/api/downtime/${first.data.downtime._id}`, {
+      user: admin,
+      body: {
+        startAt: new Date(Date.now() + 2 * hour).toISOString(),
+        endAt: new Date(Date.now() + hour).toISOString()
+      }
+    });
+    assert.equal(inverted.status, 400);
+
+    const conflict = await req('PUT', `/api/downtime/${first.data.downtime._id}`, {
+      user: admin,
+      body: {
+        startAt: second.data.downtime.startAt,
+        endAt: second.data.downtime.endAt
+      }
+    });
+    assert.equal(conflict.status, 409);
+
+    await removeWindow(first.data.downtime);
+    await removeWindow(second.data.downtime);
+  });
+
+  await test('timezone offsets are normalized to the same instant', async () => {
+    const target = new Date(Date.now() + 6 * hour);
+    const targetMs = target.getTime();
+    const offsetDate = new Date(targetMs + 5.5 * hour).toISOString().slice(0, 19) + '+05:30';
+    const end = new Date(targetMs + hour).toISOString();
+
+    const window = await createWindow({ title: 'Timezone window', startAt: offsetDate, endAt: end });
+    assert.equal(window.status, 201);
+    assert.ok(Math.abs(new Date(window.data.downtime.startAt).getTime() - targetMs) < 1000);
+
+    await removeWindow(window.data.downtime);
+  });
+
+  await test('scheduled window activates and expires automatically with creation blocked then restored', async () => {
+    const startMs = Date.now() + 2000;
+    const endMs = Date.now() + 7000;
+    const window = await createWindow({
+      title: 'Short automatic window',
+      startAt: new Date(startMs).toISOString(),
+      endAt: new Date(endMs).toISOString()
+    });
+    assert.equal(window.status, 201);
+    assert.equal(window.data.downtime.status, 'scheduled');
+
+    let active = false;
+    const activeDeadline = startMs + 5000;
+    while (Date.now() < activeDeadline) {
+      const status = await req('GET', '/api/downtime/status');
+      if (status.data.active) {
+        active = true;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
+    assert.equal(active, true, 'window should become active at its start time');
+
+    const blocked = await req('POST', '/api/gc-records', {
+      user,
+      body: { giftCard: 'AUTO-BLOCKED-' + Date.now(), giftCardPin: '4242', giftCardAmount: 100, paid: 80, provider: 'Flipkart' }
+    });
+    assert.equal(blocked.status, 503);
+    assert.equal(blocked.data.code, 'DOWNTIME_ACTIVE');
+
+    let restored = false;
+    const endDeadline = endMs + 8000;
+    while (Date.now() < endDeadline) {
+      const status = await req('GET', '/api/downtime/status');
+      if (!status.data.active) {
+        restored = true;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    assert.equal(restored, true, 'window should expire at its end time');
+
+    const card = 'AUTO-ALLOWED-' + Date.now();
+    const created = await req('POST', '/api/gc-records', {
+      user,
+      body: { giftCard: card, giftCardPin: '4243', giftCardAmount: 120, paid: 100, provider: 'Amazon' }
+    });
+    assert.equal(created.status, 201);
+    await req('DELETE', `/api/gc-records/${created.data.record._id}`, { user: admin });
+
+    const refreshed = await req('GET', '/api/downtime', { user: admin });
+    const expired = refreshed.data.downtimes.find(d => String(d._id) === String(window.data.downtime._id));
+    assert.ok(expired);
+    assert.equal(expired.status, 'completed');
+  });
+
+  await test('admin can start a scheduled window manually and end it manually', async () => {
+    const window = await createWindow({
+      title: 'Manual control window',
+      startAt: new Date(Date.now() + hour).toISOString(),
+      endAt: new Date(Date.now() + 2 * hour).toISOString()
+    });
+    assert.equal(window.status, 201);
+
+    const started = await req('POST', `/api/downtime/${window.data.downtime._id}/start`, { user: admin });
+    assert.equal(started.status, 200);
+    assert.equal(started.data.downtime.status, 'active');
+
+    const stopped = await req('POST', `/api/downtime/${window.data.downtime._id}/stop`, { user: admin });
+    assert.equal(stopped.status, 200);
+    assert.equal(stopped.data.downtime.status, 'completed');
+
+    await removeWindow(stopped.data.downtime);
+  });
+
   await cleanup();
 
   await test('status is clear after cleanup', async () => {

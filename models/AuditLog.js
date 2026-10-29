@@ -11,7 +11,7 @@ const auditLogSchema = new mongoose.Schema({
       'provider_added', 'provider_removed',
       'record_shared', 'record_unshared', 'bulk_shared', 'bulk_unshared',
       'downtime_scheduled', 'downtime_started', 'downtime_stopped',
-      'downtime_cancelled', 'downtime_deleted'
+      'downtime_cancelled', 'downtime_deleted', 'downtime_rescheduled'
     ]
   },
   performedBy: {

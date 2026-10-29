@@ -3,7 +3,8 @@ const {
   effectiveStatus,
   serializeDowntime,
   activeFilter,
-  downtimeWindowError
+  downtimeWindowError,
+  downtimeCountdown
 } = require('../utils/downtime');
 
 let passed = 0;
@@ -78,6 +79,25 @@ test('window validation rejects missing, inverted, and expired windows', () => {
   assert.ok(downtimeWindowError(new Date(realNow + 2000), new Date(realNow + 1000)));
   assert.ok(downtimeWindowError(new Date(realNow - 2000), new Date(realNow - 1000)));
   assert.equal(downtimeWindowError(new Date(realNow + 1000), new Date(realNow + 2000)), null);
+});
+
+test('countdown targets the start of a scheduled window and the end of an active window', () => {
+  const scheduled = downtimeCountdown({ status: 'scheduled', startAt: at(60000), endAt: at(120000) }, now);
+  assert.equal(scheduled.status, 'scheduled');
+  assert.equal(scheduled.targetAt.toISOString(), at(60000).toISOString());
+  assert.equal(scheduled.remainingMs, 60000);
+
+  const active = downtimeCountdown({ status: 'active', startAt: at(-60000), endAt: at(60000) }, now);
+  assert.equal(active.status, 'active');
+  assert.equal(active.targetAt.toISOString(), at(60000).toISOString());
+  assert.equal(active.remainingMs, 60000);
+});
+
+test('countdown never goes negative and returns null for terminal or indefinite windows', () => {
+  const late = downtimeCountdown({ status: 'scheduled', startAt: at(-60000), endAt: at(-30000) }, now);
+  assert.equal(late, null);
+  assert.equal(downtimeCountdown({ status: 'active', startAt: at(-60000), endAt: null }, now), null);
+  assert.equal(downtimeCountdown({ status: 'completed', startAt: at(-60000), endAt: at(60000) }, now), null);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

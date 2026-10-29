@@ -13,6 +13,7 @@ const auditRoutes = require('./routes/audit');
 const exportRoutes = require('./routes/export');
 const providerRoutes = require('./routes/providers');
 const downtimeRoutes = require('./routes/downtime');
+const { startDowntimeScheduler } = require('./utils/downtimeScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -120,7 +121,10 @@ mongoose.connect(MONGODB_URI, {
     );
   }
   console.log('Gift card providers ensured');
-  
+
+  const stopDowntimeScheduler = startDowntimeScheduler();
+  app.locals.stopDowntimeScheduler = stopDowntimeScheduler;
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
   });
@@ -128,3 +132,12 @@ mongoose.connect(MONGODB_URI, {
   console.error('MongoDB connection error:', err.message);
   process.exit(1);
 });
+
+const shutdown = (signal) => {
+  if (app.locals.stopDowntimeScheduler) app.locals.stopDowntimeScheduler();
+  console.log(`${signal} received, shutting down`);
+  mongoose.connection.close(false).finally(() => process.exit(0));
+};
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

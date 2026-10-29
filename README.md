@@ -35,7 +35,7 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - **Dashboard** — Overall statistics with per-user breakdown. Filterable by user and date range.
 - **Records** — View, create, edit, delete, and mark records as paid back. Supports bulk selection and bulk "Mark as Paid Back". Searchable and filterable by status, user, and date range. Undo payment status.
 - **Users** — Create, edit, disable/enable, reset password, and delete users. Each user card shows their GC statistics.
-- **Downtime** — Toggle maintenance mode on/off instantly, or schedule future maintenance windows with start/end date-time. While maintenance is active, new gift card submissions are blocked but existing records remain readable. Administrators always retain access.
+- **Downtime** — Start maintenance instantly, or schedule future windows with start/end date-time. Edit/reschedule or cancel scheduled windows, and start or end them manually. While maintenance is active, new gift card submissions are blocked but existing records remain readable. Administrators always retain access.
 - **Audit** — View paginated audit history with action filtering. Sensitive fields (PINs, passwords) are redacted in the UI.
 - **Exports** — Download GC records as CSV or Excel (.xlsx), respecting current filters.
 
@@ -53,14 +53,14 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - Edit operations exclude the current record (`_id: { $ne: record._id }`) when checking for duplicates.
 
 ### Maintenance & Scheduled Downtime
-- Administrators manage maintenance from the **Downtime** tab. The primary control is an instant **Enable/Disable maintenance mode** toggle.
-- Maintenance mode is persisted as an active downtime entry in MongoDB, so it survives server restarts. Disabling it marks the entry completed.
+- Administrators manage maintenance from the **Downtime** tab with one contextual primary action, a compact schedule form, live countdowns, and a **Manage** menu for editing or cancelling scheduled windows.
+- Maintenance can be started immediately, scheduled with a start/end date-time, edited/rescheduled, cancelled, started early, or ended early.
+- Maintenance mode is persisted as a downtime entry in MongoDB, so it survives server restarts. Ending it marks the entry completed.
 - While maintenance is active, login, record viewing, stats, providers, exports, and audit access remain available. Only creation of new gift card records is blocked.
 - `POST /api/gc-records` returns `503` with code `DOWNTIME_ACTIVE` while maintenance is active, for every role. The user and admin record forms also disable the create action.
-- Administrators can also schedule future downtime windows with a start/end date/time (stored as UTC, entered and displayed in the browser's local time zone), an optional title, and a user-facing message.
-- **Start now** moves a future window's start to the current time; **Stop now** ends active downtime early; **Cancel** removes a future window.
-- Overlapping scheduled windows are rejected (HTTP 409). Active or scheduled entries cannot be deleted until stopped or cancelled.
-- Availability is evaluated from the stored time window on every request, so scheduled downtime activates and expires automatically without a background worker.
+- Scheduled windows require both a start and end time. Times are entered and displayed in the browser's local time zone, stored as UTC, and compared consistently on the server.
+- A server-side scheduler reconciles stored statuses at startup and every 30 seconds, so activation and completion still happen after a restart or a missed boundary. Request-time evaluation using the same window rules keeps behavior correct between ticks; no frontend timer is required.
+- Overlapping scheduled windows are rejected (HTTP 409), including overlaps with open-ended active maintenance. Active or scheduled entries cannot be deleted until stopped or cancelled.
 - The public `GET /api/downtime/status` endpoint powers the login/dashboard ribbon and is refreshed every 5 seconds and when the window regains focus.
 
 ### Audit Logging
@@ -68,7 +68,7 @@ The following actions are logged to the `AuditLog` collection:
 - `user_created`, `user_edited`, `user_deleted`, `user_disabled`, `user_enabled`, `password_reset`
 - `record_created`, `record_edited`, `record_deleted`, `record_paid_back`, `bulk_paid_back`
 - `login_success`, `login_failed`
-- `downtime_scheduled`, `downtime_started`, `downtime_stopped`, `downtime_cancelled`, `downtime_deleted`
+- `downtime_scheduled`, `downtime_started`, `downtime_rescheduled`, `downtime_stopped`, `downtime_cancelled`, `downtime_deleted`
 
 **Sensitive data is never logged:**
 - Gift Card PINs are excluded from audit metadata on edits.
@@ -167,7 +167,8 @@ gc-management-app/
 - `AuthProvider` wraps the entire app, managing auth state via `localStorage`.
 - Three pages/views: `Login`, `AdminDashboard`, and `UserDashboard`.
 - Admin dashboard uses tabs (Dashboard, Records, Users, Downtime, Audit) within a single component.
-- `DowntimeProvider` polls `/api/downtime/status` every 5 seconds; a 503 `DOWNTIME_ACTIVE` response or window focus also refreshes it immediately.
+- `DowntimeProvider` polls `/api/downtime/status` every 5 seconds; a 503 `DOWNTIME_ACTIVE` response or window focus also refreshes it immediately. The server scheduler reconciles stored statuses at startup and every 30 seconds.
+- The admin downtime tab shows live countdowns, inline validation, status badges, and a compact manage menu.
 - All CSS is in a single `client/src/index.css` file.
 
 ### API Calls
@@ -246,6 +247,7 @@ gc-management-app/
 | `PUT /api/downtime` | Yes | Yes | Enable/disable maintenance mode (`{ enabled: true/false }`) |
 | `POST /api/downtime/toggle` | Yes | Yes | Alias for the maintenance mode toggle |
 | `POST /api/downtime` | Yes | Yes | Schedule a future window or start one immediately |
+| `PUT /api/downtime/:id` | Yes | Yes | Edit or reschedule a future scheduled window |
 | `POST /api/downtime/:id/start` | Yes | Yes | Start a future scheduled window now |
 | `POST /api/downtime/:id/stop` | Yes | Yes | Stop active downtime early |
 | `POST /api/downtime/:id/cancel` | Yes | Yes | Cancel future scheduled downtime |
@@ -445,6 +447,10 @@ Tests are split into unit, API integration, and Playwright end-to-end coverage f
 # Unit tests (no server or database required)
 npm run test:downtime:unit
 
+# Scheduler/restart tests (require MONGODB_URI; use isolated test databases)
+MONGODB_URI=... npm run test:downtime:scheduler
+MONGODB_URI=... npm run test:downtime:restart
+
 # Integration tests against a running server (default http://localhost:5001)
 TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \
 TEST_USER_EMAIL=... TEST_USER_PASSWORD=... \
@@ -457,12 +463,14 @@ UI_BASE=http://localhost:5001 npm run test:downtime:e2e
 ```
 
 ### Downtime Coverage
-- Time-window and indefinite-maintenance status calculation and validation (unit).
+- Time-window, countdown, indefinite-maintenance, and validation logic (unit).
+- Startup/interval reconciliation, missed start/end boundaries, terminal statuses, and simulated server restarts (scheduler).
+- Real process restart recovery for start/end boundaries missed while the server was offline.
 - Maintenance toggle persistence, idempotency, and administrator-only authorization.
 - Login and read-only APIs remain available during maintenance.
-- Gift card record creation is blocked for users and administrators while maintenance is active, then succeeds after disabling.
-- Admin UI toggle on/off, user banner, disabled create controls, and mobile rendering.
-- Scheduled-window start/stop/cancel/delete guards and audit logging.
+- Gift card record creation is blocked for users and administrators while maintenance is active, then succeeds automatically when the window ends.
+- Admin UI schedule, edit/reschedule, cancel, manual start/end, live countdowns, user banner, disabled create controls, and mobile rendering.
+- Scheduled-window create/edit overlap checks, invalid ranges, timezone normalization, and audit logging.
 
 ### Recommended Viewports for Responsive Testing
 ```

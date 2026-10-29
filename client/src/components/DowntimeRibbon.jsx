@@ -1,9 +1,11 @@
 import { CalendarClock, Wrench } from 'lucide-react';
 import { useDowntime } from '../context/DowntimeContext';
-import { formatDateTime } from '../utils/format';
+import useNow from '../hooks/useNow';
+import { formatDateTime, formatCountdown } from '../utils/format';
 
 export default function DowntimeRibbon({ showActive = false }) {
   const { active, downtime, upcoming, loading } = useDowntime();
+  const now = useNow();
 
   if (loading) return null;
 
@@ -16,6 +18,9 @@ export default function DowntimeRibbon({ showActive = false }) {
           {downtime?.message || 'New gift card submissions are temporarily paused. You can still sign in and view existing records.'}
           {downtime?.startAt && (
             <span className="downtime-ribbon-since"> Since {formatDateTime(downtime.startAt)}.</span>
+          )}
+          {downtime?.endAt && (
+            <span className="downtime-ribbon-since"> Ends in {formatCountdown(downtime.endAt, now)}.</span>
           )}
         </span>
       </div>
@@ -33,6 +38,7 @@ export default function DowntimeRibbon({ showActive = false }) {
         <strong>Scheduled maintenance:</strong>{' '}
         {formatDateTime(upcoming.startAt)} &ndash; {formatDateTime(upcoming.endAt)}
         {upcoming.title ? ` (${upcoming.title})` : ''}
+        <span className="downtime-ribbon-since"> Starts in {formatCountdown(upcoming.startAt, now)}.</span>
       </span>
     </div>
   );
