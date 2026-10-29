@@ -237,17 +237,17 @@ const buildRecentActivity = (records = [], limit = 8) => {
     }
   }
 
-  return events
-    .sort((a, b) => {
-      const aTime = a.at ? a.at.getTime() : 0;
-      const bTime = b.at ? b.at.getTime() : 0;
-      return bTime - aTime;
-    })
-    .slice(0, limit)
-    .map(event => ({
-      ...event,
-      at: event.at ? event.at.toISOString() : null
-    }));
+  const sorted = events.sort((a, b) => {
+    const aTime = a.at ? a.at.getTime() : 0;
+    const bTime = b.at ? b.at.getTime() : 0;
+    return bTime - aTime;
+  });
+  const visible = limit > 0 ? sorted.slice(0, limit) : sorted;
+
+  return visible.map(event => ({
+    ...event,
+    at: event.at ? event.at.toISOString() : null
+  }));
 };
 
 const buildPendingSummary = (records = [], search = '') => {
@@ -273,7 +273,8 @@ const buildPaymentSummary = (records = [], options = {}) => {
     startDate,
     endDate,
     search = '',
-    sort = 'date-desc'
+    sort = 'date-desc',
+    recentActivityLimit = 8
   } = options;
 
   if (!isValidTimeZone(timeZone)) {
@@ -294,13 +295,18 @@ const buildPaymentSummary = (records = [], options = {}) => {
     timeZone
   });
   const groups = groupPayments(paidBackRecords, { timeZone, sort });
+  const allRecentActivity = buildRecentActivity(records, 0);
+  const recentActivity = recentActivityLimit > 0
+    ? allRecentActivity.slice(0, recentActivityLimit)
+    : allRecentActivity;
 
   return {
     allTime: summarizeRecords(records),
     filtered: buildFilteredTotals(groups),
     groups,
     pending: buildPendingSummary(records, search),
-    recentActivity: buildRecentActivity(records),
+    recentActivity,
+    recentActivityTotal: allRecentActivity.length,
     timeZone,
     filters: {
       startDate: startDate || '',

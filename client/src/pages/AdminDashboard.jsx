@@ -8,6 +8,8 @@ import { useDowntime } from '../context/DowntimeContext';
 import api from '../utils/api';
 import { formatCurrency, formatDate, formatDateTime, formatCountdown, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
+import ListLimitSelect from '../components/ListLimitSelect';
+import { limitItems } from '../utils/listLimits';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -90,6 +92,7 @@ function AdminStats() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [users, setUsers] = useState([]);
+  const [perUserLimit, setPerUserLimit] = useState(10);
   const requestIdRef = useRef(0);
 
   const fetchStats = useCallback(async () => {
@@ -119,6 +122,8 @@ function AdminStats() {
 
   if (loading) return <div className="loading"><div className="spinner"></div></div>;
   if (!stats) return <div className="empty-state"><div className="empty-state-text">Failed to load statistics</div></div>;
+
+  const visiblePerUser = limitItems(stats.perUser || [], perUserLimit);
 
   return (
     <div>
@@ -207,7 +212,15 @@ function AdminStats() {
 
       {stats.perUser && stats.perUser.length > 0 && (
         <>
-          <h3 className="section-subtitle">Per-User Statistics</h3>
+          <div className="section-subtitle-row">
+            <h3 className="section-subtitle">Per-User Statistics</h3>
+            <ListLimitSelect
+              id="admin-per-user-limit"
+              label="Show"
+              value={perUserLimit}
+              onChange={setPerUserLimit}
+            />
+          </div>
           <div className="table-container">
             <table className="table per-user-table">
               <thead>
@@ -223,7 +236,7 @@ function AdminStats() {
                 </tr>
               </thead>
               <tbody>
-                {stats.perUser.map(u => (
+                {visiblePerUser.map(u => (
                   <tr key={u.userId}>
                     <td><strong>{u.name}</strong></td>
                     <td className="text-muted">{u.email}</td>
@@ -245,7 +258,7 @@ function AdminStats() {
             </table>
           </div>
           <div className="mobile-view">
-            {stats.perUser.map(u => (
+            {visiblePerUser.map(u => (
               <div key={u.userId} className="mobile-user-stat-card">
                 <div className="mobile-user-stat-header">
                   <div>
@@ -287,6 +300,12 @@ function AdminStats() {
               </div>
             ))}
           </div>
+          {stats.perUser.length > visiblePerUser.length && (
+            <div className="payment-limit-note">
+              <span>Showing {visiblePerUser.length} of {stats.perUser.length} users.</span>
+              <button type="button" className="link-button" onClick={() => setPerUserLimit('all')}>Show all</button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -310,6 +329,7 @@ function AdminRecords() {
   const [users, setUsers] = useState([]);
   const [userFilter, setUserFilter] = useState('');
   const [providers, setProviders] = useState([]);
+  const [listLimit, setListLimit] = useState(10);
   const [addingProvider, setAddingProvider] = useState(false);
   const [newProvider, setNewProvider] = useState('');
   const [pendingBulkShare, setPendingBulkShare] = useState(null);
@@ -334,7 +354,7 @@ function AdminRecords() {
       if (endDate) params.set('endDate', endDate);
       if (userFilter) params.set('userId', userFilter);
       params.set('page', page);
-      params.set('limit', '20');
+      params.set('limit', listLimit === 'all' ? 'all' : String(listLimit));
 
       const data = await api.get(`/api/gc-records?${params}`);
       setRecords(data.records);
@@ -345,7 +365,7 @@ function AdminRecords() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, sharedFilter, startDate, endDate, page, userFilter]);
+  }, [search, statusFilter, sharedFilter, startDate, endDate, page, userFilter, listLimit]);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
@@ -637,6 +657,12 @@ function AdminRecords() {
           <label className="form-label">To</label>
           <input type="date" className="form-input form-input-date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} />
         </div>
+        <ListLimitSelect
+          id="admin-records-limit"
+          label="Show"
+          value={listLimit}
+          onChange={(value) => { setListLimit(value); setPage(1); }}
+        />
         <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setStatusFilter(''); setSharedFilter(''); setStartDate(''); setEndDate(''); setUserFilter(''); setPage(1); }}>Clear</button>
       </div>
 
@@ -1603,6 +1629,7 @@ function AdminUsers() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [listLimit, setListLimit] = useState(10);
 
   useModalScrollLock(showForm || Boolean(resetPasswordUser));
 
@@ -1676,6 +1703,8 @@ function AdminUsers() {
 
   if (loading) return <div className="loading"><div className="spinner"></div></div>;
 
+  const visibleUsers = limitItems(users, listLimit);
+
   return (
     <div>
       <div className="section-header">
@@ -1687,6 +1716,12 @@ function AdminUsers() {
         <div className="search-input">
           <input type="text" className="form-input" placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <ListLimitSelect
+          id="admin-users-limit"
+          label="Show"
+          value={listLimit}
+          onChange={setListLimit}
+        />
       </div>
 
         {users.length === 0 ? (
@@ -1695,7 +1730,7 @@ function AdminUsers() {
             <div className="empty-state-text">No users found</div>
           </div>
         ) : (
-          users.map(u => (
+          visibleUsers.map(u => (
             <div key={u._id} className="user-card">
               <div className="user-card-header">
                 <div>
@@ -1719,6 +1754,12 @@ function AdminUsers() {
               </div>
             </div>
           ))
+        )}
+        {users.length > visibleUsers.length && (
+          <div className="payment-limit-note">
+            <span>Showing {visibleUsers.length} of {users.length} users.</span>
+            <button type="button" className="link-button" onClick={() => setListLimit('all')}>Show all</button>
+          </div>
         )}
 
       {showForm && (
@@ -1790,6 +1831,7 @@ function AdminAudit() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [listLimit, setListLimit] = useState(20);
 
   useModalScrollLock(Boolean(pendingDelete) || pendingBulkDelete);
 
@@ -1798,7 +1840,7 @@ function AdminAudit() {
     try {
       const params = new URLSearchParams();
       params.set('page', page);
-      params.set('limit', '30');
+      params.set('limit', listLimit === 'all' ? 'all' : String(listLimit));
       if (actionFilter) params.set('action', actionFilter);
       const data = await api.get(`/api/audit?${params}`);
       setLogs(data.logs);
@@ -1809,7 +1851,7 @@ function AdminAudit() {
     } finally {
       setLoading(false);
     }
-  }, [page, actionFilter]);
+  }, [page, actionFilter, listLimit]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -1924,7 +1966,17 @@ function AdminAudit() {
           <option value="">All Actions</option>
           {Object.entries(actionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </select>
+        <ListLimitSelect
+          id="admin-audit-limit"
+          label="Show"
+          value={listLimit}
+          onChange={(value) => { setListLimit(value); setPage(1); }}
+        />
       </div>
+
+      {!loading && logs.length > 0 && (
+        <p className="results-count" role="status">Showing <strong>{logs.length}</strong> of <strong>{pagination.total}</strong> audit log(s)</p>
+      )}
 
       {!loading && logs.length > 0 && (
         <div className={`bulk-action-bar ${selected.size === 0 ? 'bulk-action-bar-empty' : ''}`}>

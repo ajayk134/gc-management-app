@@ -5,6 +5,7 @@ const User = require('../models/User');
 const { auth, adminOnly, userOnly } = require('../middleware/auth');
 const { effectivePaidExpr } = require('../utils/effectivePaid');
 const { buildPaymentSummary } = require('../utils/paymentSummary');
+const { parseListLimit } = require('../utils/queryLimit');
 
 const router = express.Router();
 
@@ -61,8 +62,10 @@ router.get('/user/payments', userOnly, async (req, res) => {
       endDate,
       search = '',
       sort = 'date-desc',
-      timeZone = 'UTC'
+      timeZone = 'UTC',
+      recentLimit
     } = req.query;
+    const { limit: recentActivityLimit } = parseListLimit(recentLimit, 8);
 
     const records = await GCRecord.find({ user: req.userId })
       .select('giftCard provider giftCardAmount paid adjustedAmount paymentStatus paidBackAt notes adminNote createdAt updatedAt')
@@ -73,7 +76,8 @@ router.get('/user/payments', userOnly, async (req, res) => {
       startDate,
       endDate,
       search,
-      sort
+      sort,
+      recentActivityLimit
     });
 
     res.json(summary);

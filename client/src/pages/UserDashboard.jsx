@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-react';
+import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import DowntimeRibbon from '../components/DowntimeRibbon';
@@ -8,6 +8,7 @@ import api from '../utils/api';
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
 import PaymentSummary from '../components/PaymentSummary';
+import ListLimitSelect from '../components/ListLimitSelect';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -26,6 +27,8 @@ export default function UserDashboard() {
   const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
+  const [listLimit, setListLimit] = useState(10);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [providers, setProviders] = useState([]);
   const emptyForm = { giftCard: '', giftCardPin: '', giftCardAmount: '', paid: '', notes: '', provider: 'Flipkart' };
   const [formData, setFormData] = useState(emptyForm);
@@ -48,7 +51,7 @@ export default function UserDashboard() {
       params.set('sort', sortField);
       params.set('order', sortOrder);
       params.set('page', page);
-      params.set('limit', '20');
+      params.set('limit', listLimit === 'all' ? 'all' : String(listLimit));
 
       const [recordsData, statsData] = await Promise.all([
         api.get(`/api/gc-records?${params}`),
@@ -63,7 +66,7 @@ export default function UserDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, startDate, endDate, sort, page]);
+  }, [search, statusFilter, startDate, endDate, sort, page, listLimit]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -155,7 +158,21 @@ export default function UserDashboard() {
 
       <div className="main-content">
         <DowntimeRibbon showActive />
-        <h2 className="section-title">My Dashboard</h2>
+        <div className="dashboard-heading">
+          <div>
+            <h2 className="section-title">My Dashboard</h2>
+            <p className="dashboard-hint">Track your gift cards, payments, and pending amounts in one place.</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary dashboard-add-btn"
+            onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}
+            disabled={downtimeActive}
+            title={downtimeActive ? 'New records are paused during maintenance' : undefined}
+          >
+            {downtimeActive ? 'Maintenance mode' : '+ Add Record'}
+          </button>
+        </div>
 
         <div className="stats-grid">
           <div className="stat-card stat-card-records">
@@ -204,19 +221,26 @@ export default function UserDashboard() {
 
         <PaymentSummary />
 
-        <div className="section-header">
-          <h2 className="section-title">My Gift Cards</h2>
+        <div className="section-header dashboard-section-header">
+          <div className="section-title-row">
+            <h2 className="section-title">My Gift Cards</h2>
+            <span className="section-count-badge">{pagination.total} record{pagination.total === 1 ? '' : 's'}</span>
+          </div>
           <button
             type="button"
-            className="btn btn-primary"
-            onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}
-            disabled={downtimeActive}
-            title={downtimeActive ? 'New records are paused during maintenance' : undefined}
+            className="section-collapse-btn"
+            aria-expanded={recordsOpen}
+            aria-controls="my-gift-cards-panel"
+            aria-label={`${recordsOpen ? 'Collapse' : 'Expand'} My Gift Cards`}
+            onClick={() => setRecordsOpen(open => !open)}
           >
-            {downtimeActive ? 'Maintenance mode' : '+ Add Record'}
+            {recordsOpen ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+            <span>{recordsOpen ? 'Collapse' : 'Expand'}</span>
           </button>
         </div>
 
+        {recordsOpen && (
+        <div id="my-gift-cards-panel">
         <div className="filter-bar">
             <div className="search-input">
               <input
@@ -251,6 +275,12 @@ export default function UserDashboard() {
                 <option value="paidBackAt:asc">Paid back: oldest first</option>
               </select>
             </div>
+            <ListLimitSelect
+              id="my-gift-cards-limit"
+              label="Show"
+              value={listLimit}
+              onChange={(value) => { setListLimit(value); setPage(1); }}
+            />
             <button className="btn btn-outline btn-sm" onClick={resetFilters}>Clear</button>
           </div>
 
@@ -342,6 +372,8 @@ export default function UserDashboard() {
               )}
             </>
           )}
+        </div>
+        )}
       </div>
 
       {showForm && (

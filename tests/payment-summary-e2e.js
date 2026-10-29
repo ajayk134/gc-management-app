@@ -30,6 +30,11 @@ async function login(page, creds) {
   await page.waitForLoadState('networkidle');
 }
 
+async function openSection(scope, name) {
+  const expand = scope.getByRole('button', { name: `Expand ${name}` });
+  if (await expand.count()) await expand.first().click();
+}
+
 (async () => {
   assert.ok(USER.email && USER.password && ADMIN.email && ADMIN.password, 'TEST_USER_EMAIL, TEST_USER_PASSWORD, TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD are required');
 
@@ -41,6 +46,17 @@ async function login(page, creds) {
     await login(page, USER);
     await page.getByRole('heading', { name: 'My Dashboard' }).waitFor({ timeout: 15000 });
 
+    await test('primary Add Record action sits above the dashboard sections and opens the form', async () => {
+      const addButton = page.getByRole('button', { name: '+ Add Record' }).first();
+      await addButton.waitFor({ timeout: 15000 });
+      const addBox = await addButton.boundingBox();
+      const statsBox = await page.locator('.stats-grid').boundingBox();
+      assert.ok(addBox.y < statsBox.y, 'Add Record should appear above the dashboard stats and lists');
+      await addButton.click();
+      await page.getByRole('heading', { name: 'Add Gift Card Record' }).waitFor({ timeout: 15000 });
+      await page.getByRole('button', { name: 'Cancel' }).click();
+    });
+
     await test('user dashboard shows the payment summary with recorded totals', async () => {
       await page.getByRole('heading', { name: 'Payment Summary' }).waitFor({ timeout: 15000 });
       const summary = page.locator('.payment-summary');
@@ -51,6 +67,7 @@ async function login(page, creds) {
 
     await test('daily payment groups expand to show individual records and amounts', async () => {
       const summary = page.locator('.payment-summary');
+      await openSection(summary, 'Payment history by date');
       const firstGroup = summary.locator('.payment-group-header').first();
       await firstGroup.waitFor({ timeout: 15000 });
       const groupCount = await summary.locator('.payment-group').count();
@@ -65,6 +82,7 @@ async function login(page, creds) {
 
     await test('payment search filters groups and updates the in-view counts', async () => {
       const summary = page.locator('.payment-summary');
+      await openSection(summary, 'Payment history by date');
       const response = page.waitForResponse(resp => resp.url().includes('/api/stats/user/payments') && resp.url().includes('search='), { timeout: 15000 });
       await summary.getByLabel('Search payments').fill('SHR-TEST-6');
       await response;
@@ -79,6 +97,7 @@ async function login(page, creds) {
     await test('daily, weekly, and monthly trend summaries render', async () => {
       const summary = page.locator('.payment-summary');
       await summary.getByRole('button', { name: 'Clear' }).click();
+      await openSection(summary, 'Payment trend');
       await summary.locator('.payment-chart-column').first().waitFor({ timeout: 15000 });
       await summary.getByRole('button', { name: 'Weekly', exact: true }).click();
       await summary.locator('.payment-chart-column').first().waitFor({ timeout: 15000 });
@@ -91,9 +110,34 @@ async function login(page, creds) {
       const summary = page.locator('.payment-summary');
       const pending = summary.locator('.payment-pending-panel');
       await pending.waitFor({ timeout: 15000 });
+      await openSection(summary, 'Pending payments');
       const text = await pending.innerText();
       assert.ok(text.includes('Not yet recorded as paid back'));
       assert.ok(text.includes('No future payment dates are estimated'));
+    });
+
+    await test('user display limits accept All and survive collapsing sections', async () => {
+      const summary = page.locator('.payment-summary');
+      await summary.getByText(/All time:/).waitFor({ timeout: 15000 });
+      await openSection(summary, 'Payment history by date');
+      const historyLimit = summary.locator('#payment-history-limit');
+      await historyLimit.selectOption('all');
+      assert.equal(await historyLimit.inputValue(), 'all');
+      await summary.getByRole('button', { name: 'Collapse Payment history by date' }).click();
+      await summary.getByRole('button', { name: 'Expand Payment history by date' }).click();
+      assert.equal(await historyLimit.inputValue(), 'all');
+    });
+
+    await test('My Gift Cards starts collapsed and supports an All-records limit', async () => {
+      const panel = page.locator('#my-gift-cards-panel');
+      assert.equal(await panel.count(), 0, 'My Gift Cards should start minimized');
+      await page.getByRole('button', { name: 'Expand My Gift Cards' }).click();
+      await panel.waitFor({ timeout: 15000 });
+      const response = page.waitForResponse(resp => resp.url().includes('/api/gc-records') && resp.url().includes('limit=all'), { timeout: 15000 });
+      const limit = page.locator('#my-gift-cards-limit');
+      await limit.selectOption('all');
+      await response;
+      assert.equal(await limit.inputValue(), 'all');
     });
 
     await desktop.close();
@@ -105,6 +149,8 @@ async function login(page, creds) {
       await login(mobilePage, USER);
       await mobilePage.getByRole('heading', { name: 'Payment Summary' }).waitFor({ timeout: 15000 });
       const summary = mobilePage.locator('.payment-summary');
+      await summary.getByText(/All time:/).waitFor({ timeout: 15000 });
+      await openSection(summary, 'Payment history by date');
       const group = summary.locator('.payment-group-header').first();
       await group.waitFor({ timeout: 15000 });
       const box = await group.boundingBox();
@@ -123,6 +169,28 @@ async function login(page, creds) {
       await adminPage.getByRole('heading', { name: 'Admin Dashboard' }).waitFor({ timeout: 15000 });
       await adminPage.getByText('Total Records').first().waitFor({ timeout: 15000 });
       assert.equal(await adminPage.getByRole('heading', { name: 'Payment Summary' }).count(), 0);
+      await adminPage.locator('#admin-per-user-limit').waitFor({ timeout: 15000 });
+    });
+
+    await test('admin list views expose display-limit controls including All', async () => {
+      await adminPage.getByRole('button', { name: 'Records', exact: true }).click();
+      const recordsLimit = adminPage.locator('#admin-records-limit');
+      await recordsLimit.waitFor({ timeout: 15000 });
+      assert.equal(await recordsLimit.locator('option[value="all"]').count(), 1);
+      await recordsLimit.selectOption('all');
+
+      await adminPage.getByRole('button', { name: 'Users', exact: true }).click();
+      const usersLimit = adminPage.locator('#admin-users-limit');
+      await usersLimit.waitFor({ timeout: 15000 });
+      assert.equal(await usersLimit.locator('option[value="all"]').count(), 1);
+      await usersLimit.selectOption('all');
+
+      await adminPage.getByRole('button', { name: 'Audit', exact: true }).click();
+      const auditLimit = adminPage.locator('#admin-audit-limit');
+      await auditLimit.waitFor({ timeout: 15000 });
+      assert.equal(await auditLimit.locator('option[value="all"]').count(), 1);
+      await auditLimit.selectOption('all');
+
       await adminContext.close();
     });
   } finally {

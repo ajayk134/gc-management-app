@@ -4,6 +4,7 @@ const User = require('../models/User');
 const { auth, adminOnly, blockDuringDowntime } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 const { effectivePaid } = require('../utils/effectivePaid');
+const { parseListLimit, parseListPage } = require('../utils/queryLimit');
 
 const router = express.Router();
 
@@ -61,7 +62,9 @@ router.get('/', async (req, res) => {
 
     const sortField = sort || 'createdAt';
     const sortOrder = order === 'asc' ? 1 : -1;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const { limit: pageSize, all } = parseListLimit(limit, 50);
+    const currentPage = all ? 1 : parseListPage(page);
+    const skip = all ? 0 : (currentPage - 1) * pageSize;
 
     const [records, total] = await Promise.all([
       GCRecord.find(filter)
@@ -70,7 +73,7 @@ router.get('/', async (req, res) => {
         .populate('sharedBy', 'name email')
         .sort({ [sortField]: sortOrder })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(pageSize),
       GCRecord.countDocuments(filter)
     ]);
 
@@ -78,9 +81,10 @@ router.get('/', async (req, res) => {
       records,
       pagination: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit)),
-        limit: parseInt(limit)
+        page: currentPage,
+        pages: all ? (total > 0 ? 1 : 0) : Math.ceil(total / pageSize),
+        limit: all ? 'all' : pageSize,
+        all
       }
     });
   } catch (error) {

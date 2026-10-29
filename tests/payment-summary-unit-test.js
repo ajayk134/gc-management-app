@@ -161,6 +161,24 @@ test('recent activity marks paid-back records without a date as unrecorded', () 
   assert.equal(events[0].at, null);
 });
 
+test('recent activity can return every event or a caller-selected limit', () => {
+  const records = Array.from({ length: 12 }, (_, index) => record({
+    _id: `R-${index}`,
+    giftCard: `RECENT-${index}`,
+    paidBackAt: new Date(Date.UTC(2026, 5, 1, 10, index)).toISOString()
+  }));
+
+  const all = buildPaymentSummary(records, { timeZone: 'UTC', recentActivityLimit: 0 });
+  assert.equal(all.recentActivity.length, 12);
+  assert.equal(all.recentActivityTotal, 12);
+
+  const limited = buildPaymentSummary(records, { timeZone: 'UTC', recentActivityLimit: 5 });
+  assert.equal(limited.recentActivity.length, 5);
+  assert.equal(limited.recentActivityTotal, 12);
+  assert.equal(limited.recentActivity[0].record.giftCard, 'RECENT-11');
+  assert.equal(limited.recentActivity[4].record.giftCard, 'RECENT-7');
+});
+
 test('empty datasets return safe zero totals and no groups', () => {
   const summary = buildPaymentSummary([], { timeZone: 'UTC' });
   assert.equal(summary.groups.length, 0);

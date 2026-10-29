@@ -158,6 +158,31 @@ const dateKey = (date, timeZone) => {
       assert.equal(summary.data.pending.amount, 25);
     });
 
+    await test('recent activity supports finite limits and the All option', async () => {
+      const limited = await req('GET', `/api/stats/user/payments?timeZone=${encodeURIComponent(timeZone)}&recentLimit=1`, { user });
+      assert.equal(limited.status, 200);
+      assert.equal(limited.data.recentActivity.length, 1);
+      assert.ok(limited.data.recentActivityTotal >= 1);
+
+      const all = await req('GET', `/api/stats/user/payments?timeZone=${encodeURIComponent(timeZone)}&recentLimit=all`, { user });
+      assert.equal(all.status, 200);
+      assert.equal(all.data.recentActivity.length, all.data.recentActivityTotal);
+      assert.ok(all.data.recentActivityTotal > limited.data.recentActivity.length);
+    });
+
+    await test('record lists support the All option without dropping historical rows', async () => {
+      const firstPage = await req('GET', '/api/gc-records?limit=1&page=1', { user });
+      assert.equal(firstPage.status, 200);
+      assert.equal(firstPage.data.records.length, 1);
+      assert.ok(firstPage.data.pagination.total >= 1);
+
+      const allRecords = await req('GET', '/api/gc-records?limit=all', { user });
+      assert.equal(allRecords.status, 200);
+      assert.equal(allRecords.data.pagination.limit, 'all');
+      assert.equal(allRecords.data.pagination.all, true);
+      assert.equal(allRecords.data.records.length, allRecords.data.pagination.total);
+    });
+
     await test('date range filters use recorded paid-back dates', async () => {
       const todayResult = await req('GET', `/api/stats/user/payments?timeZone=${encodeURIComponent(timeZone)}&search=${encodeURIComponent(tag)}&startDate=${today}&endDate=${today}`, { user });
       assert.equal(todayResult.status, 200);

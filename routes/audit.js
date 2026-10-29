@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const AuditLog = require('../models/AuditLog');
 const { auth, adminOnly } = require('../middleware/auth');
+const { parseListLimit, parseListPage } = require('../utils/queryLimit');
 
 const router = express.Router();
 
@@ -19,14 +20,16 @@ router.get('/', async (req, res) => {
       if (endDate) filter.createdAt.$lte = new Date(endDate + 'T23:59:59.999Z');
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const { limit: pageSize, all } = parseListLimit(limit, 50);
+    const currentPage = all ? 1 : parseListPage(page);
+    const skip = all ? 0 : (currentPage - 1) * pageSize;
 
     const [logs, total] = await Promise.all([
       AuditLog.find(filter)
         .populate('performedBy', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(pageSize),
       AuditLog.countDocuments(filter)
     ]);
 
@@ -34,8 +37,10 @@ router.get('/', async (req, res) => {
       logs,
       pagination: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit))
+        page: currentPage,
+        pages: all ? (total > 0 ? 1 : 0) : Math.ceil(total / pageSize),
+        limit: all ? 'all' : pageSize,
+        all
       }
     });
   } catch (error) {

@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Clock,
   CreditCard,
   Hourglass,
@@ -16,6 +17,8 @@ import {
   formatDateKey,
   formatMonthKey
 } from '../utils/format';
+import ListLimitSelect from './ListLimitSelect';
+import { limitItems } from '../utils/listLimits';
 
 const EMPTY_FILTERS = { startDate: '', endDate: '', search: '', sort: 'date-desc' };
 const SORT_OPTIONS = [
@@ -25,8 +28,6 @@ const SORT_OPTIONS = [
   { value: 'amount-asc', label: 'Lowest daily total' }
 ];
 
-const LIMITS = { daily: 14, weekly: 12, monthly: 12 };
-
 function startOfWeekKey(dateKey) {
   const date = new Date(`${dateKey}T00:00:00Z`);
   const offset = (date.getUTCDay() + 6) % 7;
@@ -34,7 +35,7 @@ function startOfWeekKey(dateKey) {
   return date.toISOString().slice(0, 10);
 }
 
-function buildSeries(groups, granularity) {
+function buildSeries(groups, granularity, limit) {
   const buckets = new Map();
 
   for (const group of groups) {
@@ -62,13 +63,28 @@ function buildSeries(groups, granularity) {
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 
-  const limit = LIMITS[granularity] || LIMITS.daily;
-  const visible = series.slice(-limit);
+  const visible = limit === 'all' ? series : series.slice(-Math.max(1, Number(limit) || 1));
   return { series, visible, hiddenCount: Math.max(0, series.length - visible.length) };
 }
 
 function groupLabel(group) {
   return group.key === 'unknown' ? 'Date not recorded' : formatDateKey(group.key);
+}
+
+function CollapseButton({ expanded, onClick, controls, label }) {
+  return (
+    <button
+      type="button"
+      className="section-collapse-btn"
+      aria-expanded={expanded}
+      aria-controls={controls}
+      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label}`}
+      onClick={onClick}
+    >
+      {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+      <span>{expanded ? 'Collapse' : 'Expand'}</span>
+    </button>
+  );
 }
 
 function PaymentRecordRow({ record }) {
@@ -129,6 +145,13 @@ export default function PaymentSummary() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [expanded, setExpanded] = useState(() => new Set());
   const [granularity, setGranularity] = useState('daily');
+  const [limits, setLimits] = useState({ trend: 10, pending: 10, history: 10, activity: 10 });
+  const [sectionsOpen, setSectionsOpen] = useState({
+    trend: false,
+    pending: false,
+    history: false,
+    activity: false
+  });
   const requestIdRef = useRef(0);
   const timeZone = useMemo(() => {
     try {
@@ -146,6 +169,7 @@ export default function PaymentSummary() {
       const params = new URLSearchParams();
       params.set('timeZone', timeZone);
       params.set('sort', filters.sort);
+      params.set('recentLimit', limits.activity === 'all' ? 'all' : String(limits.activity));
       if (filters.startDate) params.set('startDate', filters.startDate);
       if (filters.endDate) params.set('endDate', filters.endDate);
       if (filters.search.trim()) params.set('search', filters.search.trim());
@@ -163,7 +187,7 @@ export default function PaymentSummary() {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [filters, timeZone]);
+  }, [filters, limits.activity, timeZone]);
 
   useEffect(() => {
     const timer = setTimeout(fetchSummary, filters.search ? 300 : 0);
@@ -183,13 +207,28 @@ export default function PaymentSummary() {
     setFilters(previous => ({ ...previous, [name]: value }));
   };
 
+  const updateLimit = (name, value) => {
+    setLimits(previous => ({ ...previous, [name]: value }));
+  };
+
+  const toggleSection = (name) => {
+    setSectionsOpen(previous => ({ ...previous, [name]: !previous[name] }));
+  };
+
   const clearFilters = () => setFilters(EMPTY_FILTERS);
 
   const groups = data?.groups || [];
-  const chart = useMemo(() => buildSeries(groups, granularity), [groups, granularity]);
+  const chart = useMemo(
+    () => buildSeries(groups, granularity, limits.trend),
+    [groups, granularity, limits.trend]
+  );
   const maxTotal = chart.visible.reduce((max, item) => Math.max(max, item.total), 0);
   const hasFilters = Boolean(filters.startDate || filters.endDate || filters.search.trim());
   const pending = data?.pending || { count: 0, amount: 0, records: [] };
+  const visibleGroups = limitItems(groups, limits.history);
+  const visiblePending = limitItems(pending.records, limits.pending);
+  const visibleActivity = limitItems(data?.recentActivity || [], limits.activity);
+  const activityTotal = data?.recentActivityTotal ?? (data?.recentActivity?.length || 0);
 
   return (
     <section className="payment-summary" aria-labelledby="payment-summary-title" aria-busy={loading}>
@@ -300,101 +339,145 @@ export default function PaymentSummary() {
           )}
 
           <div className="payment-insights-grid">
-            <div className="payment-panel">
+            <div className={`payment-panel ${sectionsOpen.trend ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
               <div className="payment-panel-header">
                 <div>
                   <h3 className="payment-panel-title">Payment trend</h3>
                   <p className="payment-panel-hint">Recorded paid-back totals by period</p>
                 </div>
-                <div className="payment-segmented" role="group" aria-label="Payment trend granularity">
-                  {['daily', 'weekly', 'monthly'].map(option => (
-                    <button
-                      key={option}
-                      type="button"
-                      className={granularity === option ? 'active' : ''}
-                      aria-pressed={granularity === option}
-                      onClick={() => setGranularity(option)}
-                    >
-                      {option[0].toUpperCase() + option.slice(1)}
-                    </button>
-                  ))}
+                <div className="payment-panel-controls">
+                  <div className="payment-segmented" role="group" aria-label="Payment trend granularity">
+                    {['daily', 'weekly', 'monthly'].map(option => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={granularity === option ? 'active' : ''}
+                        aria-pressed={granularity === option}
+                        onClick={() => setGranularity(option)}
+                      >
+                        {option[0].toUpperCase() + option.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <ListLimitSelect
+                    id="payment-trend-limit"
+                    label="Show"
+                    value={limits.trend}
+                    onChange={value => updateLimit('trend', value)}
+                  />
+                  <CollapseButton
+                    expanded={sectionsOpen.trend}
+                    onClick={() => toggleSection('trend')}
+                    controls="payment-trend-panel"
+                    label="Payment trend"
+                  />
                 </div>
               </div>
 
-              {chart.visible.length === 0 ? (
-                <div className="payment-state payment-state-empty">
-                  <CalendarClock size={22} aria-hidden="true" />
-                  <span>No recorded payments for these filters.</span>
-                </div>
-              ) : (
-                <>
-                  <div className="payment-chart" role="list" aria-label={`${granularity} paid-back totals`}>
-                    {chart.visible.map(item => (
-                      <div
-                        className="payment-chart-column"
-                        key={item.key}
-                        role="listitem"
-                        aria-label={`${item.label}: ${formatCurrency(item.total)}, ${item.count} record${item.count === 1 ? '' : 's'}`}
-                        title={`${item.label}: ${formatCurrency(item.total)} · ${item.count} record${item.count === 1 ? '' : 's'}`}
-                      >
-                        <div className="payment-chart-track">
+              {sectionsOpen.trend && (
+                <div className="payment-panel-body" id="payment-trend-panel">
+                  {chart.visible.length === 0 ? (
+                    <div className="payment-state payment-state-empty">
+                      <CalendarClock size={22} aria-hidden="true" />
+                      <span>No recorded payments for these filters.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="payment-chart" role="list" aria-label={`${granularity} paid-back totals`}>
+                        {chart.visible.map(item => (
                           <div
-                            className="payment-chart-bar"
-                            style={{ height: `${maxTotal > 0 ? Math.max(6, (item.total / maxTotal) * 100) : 6}%` }}
-                          />
-                        </div>
-                        <span className="payment-chart-label">
-                          {item.label.replace(/ \d{4}$/, '')}
-                        </span>
-                        <span className="payment-chart-value">{formatCurrency(item.total)}</span>
-                        <span className="payment-chart-count">{item.count} rec</span>
+                            className="payment-chart-column"
+                            key={item.key}
+                            role="listitem"
+                            aria-label={`${item.label}: ${formatCurrency(item.total)}, ${item.count} record${item.count === 1 ? '' : 's'}`}
+                            title={`${item.label}: ${formatCurrency(item.total)} · ${item.count} record${item.count === 1 ? '' : 's'}`}
+                          >
+                            <div className="payment-chart-track">
+                              <div
+                                className="payment-chart-bar"
+                                style={{ height: `${maxTotal > 0 ? Math.max(6, (item.total / maxTotal) * 100) : 6}%` }}
+                              />
+                            </div>
+                            <span className="payment-chart-label">
+                              {item.label.replace(/ \d{4}$/, '')}
+                            </span>
+                            <span className="payment-chart-value">{formatCurrency(item.total)}</span>
+                            <span className="payment-chart-count">{item.count} rec</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  {chart.hiddenCount > 0 && (
-                    <p className="payment-panel-hint">Showing the latest {chart.visible.length} of {chart.series.length} {granularity} periods with payments.</p>
+                      {chart.hiddenCount > 0 && (
+                        <div className="payment-limit-note">
+                          <span>Showing {chart.visible.length} of {chart.series.length} {granularity} periods with payments.</span>
+                          <button type="button" className="link-button" onClick={() => updateLimit('trend', 'all')}>Show all</button>
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
+                </div>
               )}
             </div>
 
-            <div className="payment-panel payment-pending-panel">
+            <div className={`payment-panel payment-pending-panel ${sectionsOpen.pending ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
               <div className="payment-panel-header">
                 <div>
                   <h3 className="payment-panel-title">Pending payments</h3>
                   <p className="payment-panel-hint">Not yet recorded as paid back</p>
                 </div>
-                <span className="badge status-pending">{pending.count} pending</span>
+                <div className="payment-panel-controls">
+                  <span className="badge status-pending">{pending.count} pending</span>
+                  <ListLimitSelect
+                    id="payment-pending-limit"
+                    label="Show"
+                    value={limits.pending}
+                    onChange={value => updateLimit('pending', value)}
+                  />
+                  <CollapseButton
+                    expanded={sectionsOpen.pending}
+                    onClick={() => toggleSection('pending')}
+                    controls="payment-pending-panel"
+                    label="Pending payments"
+                  />
+                </div>
               </div>
 
-              {pending.records.length === 0 ? (
-                <div className="payment-state payment-state-empty">
-                  <CheckCircle2 size={22} aria-hidden="true" />
-                  <span>No pending records.</span>
+              {sectionsOpen.pending && (
+                <div className="payment-panel-body" id="payment-pending-panel">
+                  {pending.records.length === 0 ? (
+                    <div className="payment-state payment-state-empty">
+                      <CheckCircle2 size={22} aria-hidden="true" />
+                      <span>No pending records.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <ul className="payment-pending-list">
+                        {visiblePending.map(record => (
+                          <li key={record._id} className="payment-pending-item">
+                            <div>
+                              <strong>{record.giftCard}</strong>
+                              <span className="payment-record-meta">
+                                {record.provider || 'No provider'} · Submitted {formatDate(record.createdAt)}
+                              </span>
+                            </div>
+                            <span className="payment-pending-amount">{formatCurrency(record.effectivePaid)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {pending.records.length > visiblePending.length && (
+                        <div className="payment-limit-note">
+                          <span>Showing {visiblePending.length} of {pending.records.length} pending record(s).</span>
+                          <button type="button" className="link-button" onClick={() => updateLimit('pending', 'all')}>Show all</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <p className="payment-truth-note">No future payment dates are estimated. Only recorded paid-back dates appear above.</p>
                 </div>
-              ) : (
-                <ul className="payment-pending-list">
-                  {pending.records.slice(0, 5).map(record => (
-                    <li key={record._id} className="payment-pending-item">
-                      <div>
-                        <strong>{record.giftCard}</strong>
-                        <span className="payment-record-meta">
-                          {record.provider || 'No provider'} · Submitted {formatDate(record.createdAt)}
-                        </span>
-                      </div>
-                      <span className="payment-pending-amount">{formatCurrency(record.effectivePaid)}</span>
-                    </li>
-                  ))}
-                </ul>
               )}
-              {pending.records.length > 5 && (
-                <p className="payment-panel-hint">{pending.records.length - 5} more pending record(s) in My Gift Cards below.</p>
-              )}
-              <p className="payment-truth-note">No future payment dates are estimated. Only recorded paid-back dates appear above.</p>
             </div>
           </div>
 
-          <div className="payment-panel payment-history-panel">
+          <div className={`payment-panel payment-history-panel ${sectionsOpen.history ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
             <div className="payment-panel-header">
               <div>
                 <h3 className="payment-panel-title">Payment history by date</h3>
@@ -402,67 +485,119 @@ export default function PaymentSummary() {
                   {data.filtered.paidBackCount} record{data.filtered.paidBackCount === 1 ? '' : 's'} across {data.filtered.dayCount} recorded date{data.filtered.dayCount === 1 ? '' : 's'} · {formatCurrency(data.filtered.totalPaidBackAmount)} paid back
                 </p>
               </div>
-              {hasFilters && <span className="badge badge-neutral">Filtered</span>}
+              <div className="payment-panel-controls">
+                {hasFilters && <span className="badge badge-neutral">Filtered</span>}
+                <ListLimitSelect
+                  id="payment-history-limit"
+                  label="Show"
+                  value={limits.history}
+                  onChange={value => updateLimit('history', value)}
+                />
+                <CollapseButton
+                  expanded={sectionsOpen.history}
+                  onClick={() => toggleSection('history')}
+                  controls="payment-history-panel"
+                  label="Payment history by date"
+                />
+              </div>
             </div>
 
-            {groups.length === 0 ? (
-              <div className="payment-state payment-state-empty">
-                <Clock size={22} aria-hidden="true" />
-                <span>{hasFilters ? 'No paid-back records match these filters.' : 'No payments have been recorded yet.'}</span>
-              </div>
-            ) : (
-              <div className="payment-groups">
-                {groups.map(group => {
-                  const isOpen = expanded.has(group.key);
-                  const panelId = `payment-group-${group.key}`;
-                  return (
-                    <div className={`payment-group ${isOpen ? 'payment-group-open' : ''}`} key={group.key}>
-                      <button
-                        type="button"
-                        className="payment-group-header"
-                        aria-expanded={isOpen}
-                        aria-controls={panelId}
-                        onClick={() => toggleGroup(group.key)}
-                      >
-                        <span className="payment-group-date">
-                          <span className="payment-group-day">{groupLabel(group)}</span>
-                          <span className="payment-group-meta">
-                            {group.count} record{group.count === 1 ? '' : 's'} · GC {formatCurrency(group.totalGiftCardAmount)}
-                          </span>
-                        </span>
-                        <span className="payment-group-total">{formatCurrency(group.totalPaid)}</span>
-                        <ChevronDown className="payment-group-chevron" size={18} aria-hidden="true" />
-                      </button>
-                      {isOpen && (
-                        <div className="payment-group-body" id={panelId}>
-                          {group.records.map(record => <PaymentRecordRow key={record._id || `${record.giftCard}-${record.paid}`} record={record} />)}
-                        </div>
-                      )}
+            {sectionsOpen.history && (
+              <div className="payment-panel-body" id="payment-history-panel">
+                {groups.length === 0 ? (
+                  <div className="payment-state payment-state-empty">
+                    <Clock size={22} aria-hidden="true" />
+                    <span>{hasFilters ? 'No paid-back records match these filters.' : 'No payments have been recorded yet.'}</span>
+                  </div>
+                ) : (
+                  <>
+                    {groups.length > visibleGroups.length && (
+                      <div className="payment-limit-note">
+                        <span>Showing {visibleGroups.length} of {groups.length} payment date{groups.length === 1 ? '' : 's'}.</span>
+                        <button type="button" className="link-button" onClick={() => updateLimit('history', 'all')}>Show all</button>
+                      </div>
+                    )}
+                    <div className="payment-groups">
+                      {visibleGroups.map(group => {
+                        const isOpen = expanded.has(group.key);
+                        const panelId = `payment-group-${group.key}`;
+                        return (
+                          <div className={`payment-group ${isOpen ? 'payment-group-open' : ''}`} key={group.key}>
+                            <button
+                              type="button"
+                              className="payment-group-header"
+                              aria-expanded={isOpen}
+                              aria-controls={panelId}
+                              onClick={() => toggleGroup(group.key)}
+                            >
+                              <span className="payment-group-date">
+                                <span className="payment-group-day">{groupLabel(group)}</span>
+                                <span className="payment-group-meta">
+                                  {group.count} record{group.count === 1 ? '' : 's'} · GC {formatCurrency(group.totalGiftCardAmount)}
+                                </span>
+                              </span>
+                              <span className="payment-group-total">{formatCurrency(group.totalPaid)}</span>
+                              <ChevronDown className="payment-group-chevron" size={18} aria-hidden="true" />
+                            </button>
+                            {isOpen && (
+                              <div className="payment-group-body" id={panelId}>
+                                {group.records.map(record => <PaymentRecordRow key={record._id || `${record.giftCard}-${record.paid}`} record={record} />)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </>
+                )}
               </div>
             )}
           </div>
 
-          <div className="payment-panel payment-activity-panel">
+          <div className={`payment-panel payment-activity-panel ${sectionsOpen.activity ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
             <div className="payment-panel-header">
               <div>
                 <h3 className="payment-panel-title">Recent activity</h3>
                 <p className="payment-panel-hint">Latest recorded payments and pending submissions</p>
               </div>
-            </div>
-            {data.recentActivity.length === 0 ? (
-              <div className="payment-state payment-state-empty">
-                <Clock size={22} aria-hidden="true" />
-                <span>No recent activity.</span>
+              <div className="payment-panel-controls">
+                <ListLimitSelect
+                  id="payment-activity-limit"
+                  label="Show"
+                  value={limits.activity}
+                  onChange={value => updateLimit('activity', value)}
+                />
+                <CollapseButton
+                  expanded={sectionsOpen.activity}
+                  onClick={() => toggleSection('activity')}
+                  controls="payment-activity-panel"
+                  label="Recent activity"
+                />
               </div>
-            ) : (
-              <ul className="payment-timeline">
-                {data.recentActivity.map((event, index) => (
-                  <ActivityItem key={`${event.type}-${event.record._id || index}-${event.at || index}`} event={event} />
-                ))}
-              </ul>
+            </div>
+            {sectionsOpen.activity && (
+              <div className="payment-panel-body" id="payment-activity-panel">
+                {visibleActivity.length === 0 ? (
+                  <div className="payment-state payment-state-empty">
+                    <Clock size={22} aria-hidden="true" />
+                    <span>No recent activity.</span>
+                  </div>
+                ) : (
+                  <>
+                    <ul className="payment-timeline">
+                      {visibleActivity.map((event, index) => (
+                        <ActivityItem key={`${event.type}-${event.record._id || index}-${event.at || index}`} event={event} />
+                      ))}
+                    </ul>
+                    {activityTotal > visibleActivity.length && (
+                      <div className="payment-limit-note">
+                        <span>Showing {visibleActivity.length} of {activityTotal} activity item{activityTotal === 1 ? '' : 's'}.</span>
+                        <button type="button" className="link-button" onClick={() => updateLimit('activity', 'all')}>Show all</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
         </>
