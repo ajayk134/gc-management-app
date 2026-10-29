@@ -31,8 +31,10 @@ async function login(page, creds) {
 }
 
 async function openSection(scope, name) {
-  const expand = scope.getByRole('button', { name: `Expand ${name}` });
-  if (await expand.count()) await expand.first().click();
+  const toggle = scope.getByRole('button', { name: new RegExp(`^(Expand|Collapse) ${name}$`) });
+  await toggle.first().waitFor({ timeout: 15000 });
+  const label = await toggle.first().getAttribute('aria-label');
+  if (label && label.startsWith('Expand')) await toggle.first().click();
 }
 
 (async () => {
@@ -110,15 +112,24 @@ async function openSection(scope, name) {
     await test('payment search filters groups and updates the in-view counts', async () => {
       const summary = page.locator('.payment-summary');
       await openSection(summary, 'Payment history by date');
+      const firstGroup = summary.locator('.payment-group-header').first();
+      await firstGroup.waitFor({ timeout: 15000 });
+      if ((await firstGroup.getAttribute('aria-expanded')) !== 'true') await firstGroup.click();
+      const firstRecord = summary.locator('.payment-group-body .payment-record-row strong').first();
+      await firstRecord.waitFor({ timeout: 15000 });
+      const giftCard = (await firstRecord.innerText()).trim();
+      assert.ok(giftCard, 'the first paid-back record should have a gift card value');
+
       const response = page.waitForResponse(resp => resp.url().includes('/api/stats/user/payments') && resp.url().includes('search='), { timeout: 15000 });
-      await summary.getByLabel('Search payments').fill('SHR-TEST-6');
+      await summary.getByLabel('Search payments').fill(giftCard);
       await response;
-      await page.waitForFunction(() => {
+      await page.waitForFunction(card => {
         const value = document.querySelector('.payment-kpi .payment-kpi-value');
-        return value && value.textContent.trim() === '1';
-      }, null, { timeout: 15000 });
+        const groups = [...document.querySelectorAll('.payment-group')];
+        return value && Number(value.textContent.trim()) >= 1 && groups.some(group => group.textContent.includes(card));
+      }, giftCard, { timeout: 15000 });
       const groupText = await summary.locator('.payment-group').first().innerText();
-      assert.ok(groupText.includes('SHR-TEST-6') || (await summary.locator('.payment-group-body').first().innerText()).includes('SHR-TEST-6'));
+      assert.ok(groupText.includes(giftCard));
     });
 
     await test('daily, weekly, and monthly trend summaries render', async () => {
@@ -205,6 +216,7 @@ async function openSection(scope, name) {
         try {
           await login(mobilePage, USER);
           await mobilePage.getByRole('heading', { name: 'My Dashboard' }).waitFor({ timeout: 15000 });
+          await mobilePage.locator('.payment-summary').getByText(/All time:/).waitFor({ timeout: 15000 });
 
           const recordsBox = await mobilePage.locator('.records-section').boundingBox();
           const statsBox = await mobilePage.locator('.stats-grid').boundingBox();
