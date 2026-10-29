@@ -343,18 +343,21 @@ export default function PaymentSummary() {
                       </button>
                     ))}
                   </div>
-                  <ListLimitSelect
-                    id="payment-trend-limit"
-                    label="Show"
-                    value={limits.trend}
-                    onChange={value => updateLimit('trend', value)}
-                  />
-                  <SectionToggle
-                    expanded={sectionsOpen.trend}
-                    onClick={() => toggleSection('trend')}
-                    controls="payment-trend-panel"
-                    label="Payment trend"
-                  />
+                  <div className="payment-panel-actions">
+                    <ListLimitSelect
+                      id="payment-trend-limit"
+                      label="Show"
+                      value={limits.trend}
+                      onChange={value => updateLimit('trend', value)}
+                      inline
+                    />
+                    <SectionToggle
+                      expanded={sectionsOpen.trend}
+                      onClick={() => toggleSection('trend')}
+                      controls="payment-trend-panel"
+                      label="Payment trend"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -410,18 +413,21 @@ export default function PaymentSummary() {
                 </div>
                 <div className="payment-panel-controls">
                   <span className="badge status-pending">{pending.count} pending</span>
-                  <ListLimitSelect
-                    id="payment-pending-limit"
-                    label="Show"
-                    value={limits.pending}
-                    onChange={value => updateLimit('pending', value)}
-                  />
-                  <SectionToggle
-                    expanded={sectionsOpen.pending}
-                    onClick={() => toggleSection('pending')}
-                    controls="payment-pending-panel"
-                    label="Pending payments"
-                  />
+                  <div className="payment-panel-actions">
+                    <ListLimitSelect
+                      id="payment-pending-limit"
+                      label="Show"
+                      value={limits.pending}
+                      onChange={value => updateLimit('pending', value)}
+                      inline
+                    />
+                    <SectionToggle
+                      expanded={sectionsOpen.pending}
+                      onClick={() => toggleSection('pending')}
+                      controls="payment-pending-panel"
+                      label="Pending payments"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -471,18 +477,21 @@ export default function PaymentSummary() {
               </div>
               <div className="payment-panel-controls">
                 {hasFilters && <span className="badge badge-neutral">Filtered</span>}
-                <ListLimitSelect
-                  id="payment-history-limit"
-                  label="Show"
-                  value={limits.history}
-                  onChange={value => updateLimit('history', value)}
-                />
-                <SectionToggle
-                  expanded={sectionsOpen.history}
-                  onClick={() => toggleSection('history')}
-                  controls="payment-history-panel"
-                  label="Payment history by date"
-                />
+                <div className="payment-panel-actions">
+                  <ListLimitSelect
+                    id="payment-history-limit"
+                    label="Show"
+                    value={limits.history}
+                    onChange={value => updateLimit('history', value)}
+                    inline
+                  />
+                  <SectionToggle
+                    expanded={sectionsOpen.history}
+                    onClick={() => toggleSection('history')}
+                    controls="payment-history-panel"
+                    label="Payment history by date"
+                  />
+                </div>
               </div>
             </div>
 
@@ -545,18 +554,21 @@ export default function PaymentSummary() {
                 <p className="payment-panel-hint">Latest recorded payments and pending submissions</p>
               </div>
               <div className="payment-panel-controls">
-                <ListLimitSelect
-                  id="payment-activity-limit"
-                  label="Show"
-                  value={limits.activity}
-                  onChange={value => updateLimit('activity', value)}
-                />
-                <SectionToggle
-                  expanded={sectionsOpen.activity}
-                  onClick={() => toggleSection('activity')}
-                  controls="payment-activity-panel"
-                  label="Recent activity"
-                />
+                <div className="payment-panel-actions">
+                  <ListLimitSelect
+                    id="payment-activity-limit"
+                    label="Show"
+                    value={limits.activity}
+                    onChange={value => updateLimit('activity', value)}
+                    inline
+                  />
+                  <SectionToggle
+                    expanded={sectionsOpen.activity}
+                    onClick={() => toggleSection('activity')}
+                    controls="payment-activity-panel"
+                    label="Recent activity"
+                  />
+                </div>
               </div>
             </div>
             {sectionsOpen.activity && (

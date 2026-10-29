@@ -6,11 +6,15 @@ export default function ListLimitSelect({
   onChange,
   label = 'Show',
   disabled = false,
+  inline = false,
   className = ''
 }) {
   const selectId = id || `list-limit-${label.toLowerCase().replace(/\s+/g, '-')}`;
+  const classes = ['list-limit-select', inline ? 'list-limit-select-inline' : '', className]
+    .filter(Boolean)
+    .join(' ');
   return (
-    <label className={`list-limit-select ${className}`.trim()} htmlFor={selectId}>
+    <label className={classes} htmlFor={selectId}>
       <span className="list-limit-label">{label}</span>
       <select
         id={selectId}
