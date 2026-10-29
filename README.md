@@ -41,7 +41,7 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 
 ### User
 - **Dashboard** — Personal statistics (total records, total GC amount, total paid, total paid back, pending records/amounts).
-- **Payment summary** — Paid-back history grouped by the recorded `paidBackAt` date, with per-day record counts and totals, date-range/search/sort filters, expandable daily groups, daily/weekly/monthly trend summaries, pending-payment visibility, and recent activity. Dates use the browser's local time zone; only recorded payment dates are shown and no future payment dates are estimated.
+- **Payment summary** — Paid-back history grouped by the recorded `paidBackAt` date, with per-day record counts and totals, date-range/search/sort filters, expandable daily groups, responsive daily/weekly/monthly trend charts with exact-value details, and pending-payment visibility. Dates use the browser's local time zone; only recorded payment dates are shown and no future payment dates are estimated.
 - **Records** — Submit new GC records, edit, delete, and view own records. Searchable with status and date filters, plus sorting by submission date, GC amount, or paid-back date.
 - **No payment actions** — Users cannot mark records as paid; only Admin can.
 - **Downtime notices** — A maintenance ribbon shows the current state or upcoming date/time. During maintenance, users can still sign in and view existing records, while new gift card submissions are disabled in the UI and blocked by the API.
@@ -448,6 +448,7 @@ Tests are split into unit, API integration, and Playwright end-to-end coverage f
 # Unit tests (no server or database required)
 npm run test:downtime:unit
 npm run test:payments:unit
+npm run test:payments:trend
 
 # Payment summary integration tests (against a running server + isolated test DB)
 TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \

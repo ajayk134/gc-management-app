@@ -17,5 +17,6 @@ tests/*
 !tests/downtime-scheduler-test.js
 !tests/downtime-restart-test.js
 !tests/payment-summary-unit-test.js
+!tests/payment-trend-unit-test.js
 !tests/payment-summary-api-test.js
 !tests/payment-summary-e2e.js

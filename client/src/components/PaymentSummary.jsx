@@ -11,14 +11,15 @@ import {
 } from 'lucide-react';
 import api from '../utils/api';
 import {
+  formatCompactCurrency,
   formatCurrency,
   formatDate,
-  formatDateKey,
-  formatMonthKey
+  formatDateKey
 } from '../utils/format';
 import ListLimitSelect from './ListLimitSelect';
 import SectionToggle from './SectionToggle';
 import { limitItems } from '../utils/listLimits';
+import { buildNiceScale, buildTrendSeries, TREND_GRANULARITIES } from '../utils/paymentTrend.mjs';
 
 const EMPTY_FILTERS = { startDate: '', endDate: '', search: '', sort: 'date-desc' };
 const SORT_OPTIONS = [
@@ -27,45 +28,6 @@ const SORT_OPTIONS = [
   { value: 'amount-desc', label: 'Highest daily total' },
   { value: 'amount-asc', label: 'Lowest daily total' }
 ];
-
-function startOfWeekKey(dateKey) {
-  const date = new Date(`${dateKey}T00:00:00Z`);
-  const offset = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - offset);
-  return date.toISOString().slice(0, 10);
-}
-
-function buildSeries(groups, granularity, limit) {
-  const buckets = new Map();
-
-  for (const group of groups) {
-    if (group.key === 'unknown') continue;
-    let key = group.key;
-    if (granularity === 'weekly') key = startOfWeekKey(group.key);
-    if (granularity === 'monthly') key = group.key.slice(0, 7);
-
-    if (!buckets.has(key)) {
-      buckets.set(key, { key, count: 0, total: 0, days: new Set() });
-    }
-    const bucket = buckets.get(key);
-    bucket.count += group.count;
-    bucket.total += group.totalPaid;
-    bucket.days.add(group.key);
-  }
-
-  const series = [...buckets.values()]
-    .map(bucket => ({
-      key: bucket.key,
-      count: bucket.count,
-      total: bucket.total,
-      days: bucket.days.size,
-      label: granularity === 'monthly' ? formatMonthKey(bucket.key) : formatDateKey(bucket.key)
-    }))
-    .sort((a, b) => a.key.localeCompare(b.key));
-
-  const visible = limit === 'all' ? series : series.slice(-Math.max(1, Number(limit) || 1));
-  return { series, visible, hiddenCount: Math.max(0, series.length - visible.length) };
-}
 
 function groupLabel(group) {
   return group.key === 'unknown' ? 'Date not recorded' : formatDateKey(group.key);
@@ -93,35 +55,6 @@ function PaymentRecordRow({ record }) {
   );
 }
 
-function ActivityItem({ event }) {
-  const paid = event.type === 'paid_back';
-  const record = event.record;
-  const when = event.at ? formatDate(event.at) : null;
-
-  return (
-    <li className="payment-timeline-item">
-      <span className={`payment-timeline-dot ${paid ? 'payment-timeline-dot-paid' : 'payment-timeline-dot-pending'}`} aria-hidden="true" />
-      <div className="payment-timeline-copy">
-        <div className="payment-timeline-title">
-          {paid ? 'Payment recorded' : 'Awaiting payment'}
-          {!paid && <span className="badge status-pending">Pending</span>}
-        </div>
-        <div className="payment-timeline-meta">
-          {record.giftCard}{record.provider ? ` · ${record.provider}` : ''}
-        </div>
-        <div className="payment-timeline-meta">
-          {paid
-            ? (event.dateRecorded && when ? `Paid back ${when}` : 'Payment date not recorded')
-            : (when ? `Submitted ${when}` : 'Submission date not recorded')}
-        </div>
-      </div>
-      <strong className={paid ? 'payment-timeline-amount text-success' : 'payment-timeline-amount text-warning'}>
-        {formatCurrency(record.effectivePaid)}
-      </strong>
-    </li>
-  );
-}
-
 export default function PaymentSummary() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -129,13 +62,13 @@ export default function PaymentSummary() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [expanded, setExpanded] = useState(() => new Set());
   const [granularity, setGranularity] = useState('daily');
-  const [limits, setLimits] = useState({ trend: 10, pending: 10, history: 10, activity: 10 });
+  const [limits, setLimits] = useState({ trend: 10, pending: 10, history: 10 });
   const [sectionsOpen, setSectionsOpen] = useState({
     trend: false,
     pending: false,
-    history: false,
-    activity: false
+    history: false
   });
+  const [selectedTrendKey, setSelectedTrendKey] = useState(null);
   const requestIdRef = useRef(0);
   const timeZone = useMemo(() => {
     try {
@@ -153,7 +86,6 @@ export default function PaymentSummary() {
       const params = new URLSearchParams();
       params.set('timeZone', timeZone);
       params.set('sort', filters.sort);
-      params.set('recentLimit', limits.activity === 'all' ? 'all' : String(limits.activity));
       if (filters.startDate) params.set('startDate', filters.startDate);
       if (filters.endDate) params.set('endDate', filters.endDate);
       if (filters.search.trim()) params.set('search', filters.search.trim());
@@ -171,12 +103,16 @@ export default function PaymentSummary() {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [filters, limits.activity, timeZone]);
+  }, [filters, timeZone]);
 
   useEffect(() => {
     const timer = setTimeout(fetchSummary, filters.search ? 300 : 0);
     return () => clearTimeout(timer);
   }, [fetchSummary, filters.search]);
+
+  useEffect(() => {
+    setSelectedTrendKey(null);
+  }, [granularity, limits.trend]);
 
   const toggleGroup = (key) => {
     setExpanded(previous => {
@@ -203,16 +139,16 @@ export default function PaymentSummary() {
 
   const groups = data?.groups || [];
   const chart = useMemo(
-    () => buildSeries(groups, granularity, limits.trend),
+    () => buildTrendSeries(groups, granularity, limits.trend),
     [groups, granularity, limits.trend]
   );
-  const maxTotal = chart.visible.reduce((max, item) => Math.max(max, item.total), 0);
+  const chartScale = useMemo(() => buildNiceScale(chart.maxTotal), [chart.maxTotal]);
+  const selectedTrend = chart.visible.find(item => item.key === selectedTrendKey) || null;
+  const granularityLabel = granularity[0].toUpperCase() + granularity.slice(1);
   const hasFilters = Boolean(filters.startDate || filters.endDate || filters.search.trim());
   const pending = data?.pending || { count: 0, amount: 0, records: [] };
   const visibleGroups = limitItems(groups, limits.history);
   const visiblePending = limitItems(pending.records, limits.pending);
-  const visibleActivity = limitItems(data?.recentActivity || [], limits.activity);
-  const activityTotal = data?.recentActivityTotal ?? (data?.recentActivity?.length || 0);
 
   return (
     <section className="payment-summary" aria-labelledby="payment-summary-title" aria-busy={loading}>
@@ -323,15 +259,17 @@ export default function PaymentSummary() {
           )}
 
           <div className="payment-insights-grid">
-            <div className={`payment-panel ${sectionsOpen.trend ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
+            <div className={`payment-panel payment-trend-panel ${sectionsOpen.trend ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
               <div className="payment-panel-header">
                 <div>
                   <h3 className="payment-panel-title">Payment trend</h3>
-                  <p className="payment-panel-hint">Recorded paid-back totals by period</p>
+                  <p className="payment-panel-hint">
+                    {granularityLabel} paid-back totals by recorded date. Tap a bar for exact values.
+                  </p>
                 </div>
                 <div className="payment-panel-controls">
                   <div className="payment-segmented" role="group" aria-label="Payment trend granularity">
-                    {['daily', 'weekly', 'monthly'].map(option => (
+                    {TREND_GRANULARITIES.map(option => (
                       <button
                         key={option}
                         type="button"
@@ -370,34 +308,99 @@ export default function PaymentSummary() {
                     </div>
                   ) : (
                     <>
-                      <div className="payment-chart" role="list" aria-label={`${granularity} paid-back totals`}>
-                        {chart.visible.map(item => (
-                          <div
-                            className="payment-chart-column"
-                            key={item.key}
-                            role="listitem"
-                            aria-label={`${item.label}: ${formatCurrency(item.total)}, ${item.count} record${item.count === 1 ? '' : 's'}`}
-                            title={`${item.label}: ${formatCurrency(item.total)} · ${item.count} record${item.count === 1 ? '' : 's'}`}
-                          >
-                            <div className="payment-chart-track">
-                              <div
-                                className="payment-chart-bar"
-                                style={{ height: `${maxTotal > 0 ? Math.max(6, (item.total / maxTotal) * 100) : 6}%` }}
-                              />
-                            </div>
-                            <span className="payment-chart-label">
-                              {item.label.replace(/ \d{4}$/, '')}
-                            </span>
-                            <span className="payment-chart-value">{formatCurrency(item.total)}</span>
-                            <span className="payment-chart-count">{item.count} rec</span>
-                          </div>
-                        ))}
+                      <div className="payment-chart-meta">
+                        <span>
+                          <strong>{granularityLabel}</strong> totals · showing {chart.visible.length} of {chart.series.length} period{chart.series.length === 1 ? '' : 's'} with payments
+                        </span>
+                        <span>
+                          Total <strong>{formatCurrency(chart.visibleTotal)}</strong> · Avg <strong>{formatCurrency(chart.averagePerPeriod)}</strong> per period
+                        </span>
                       </div>
+
+                      <div className="payment-chart-frame">
+                        <div className="payment-chart-yaxis" aria-hidden="true">
+                          {chartScale.ticks.map(tick => (
+                            <span
+                              key={tick}
+                              className="payment-chart-yaxis-label"
+                              style={{ bottom: chartScale.max > 0 ? `${(tick / chartScale.max) * 100}%` : '0%' }}
+                            >
+                              {formatCompactCurrency(tick)}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="payment-chart-scroll">
+                          <div
+                            className="payment-chart"
+                            role="list"
+                            aria-label={`${granularity} paid-back totals`}
+                            data-granularity={granularity}
+                            style={{ '--chart-columns': Math.max(1, chart.visible.length) }}
+                          >
+                            <div className="payment-chart-grid" aria-hidden="true">
+                              {chartScale.ticks.map(tick => (
+                                <span
+                                  key={tick}
+                                  className="payment-chart-gridline"
+                                  style={{ bottom: chartScale.max > 0 ? `${(tick / chartScale.max) * 100}%` : '0%' }}
+                                />
+                              ))}
+                            </div>
+                            {chart.visible.map(item => {
+                              const isZero = item.total <= 0;
+                              const isSelected = item.key === selectedTrendKey;
+                              const height = chartScale.max > 0
+                                ? Math.max(0.75, (item.total / chartScale.max) * 100)
+                                : 0;
+                              return (
+                                <div className="payment-chart-column" key={item.key} role="listitem">
+                                  <button
+                                    type="button"
+                                    className={`payment-chart-column-btn ${isSelected ? 'is-selected' : ''}`}
+                                    aria-pressed={isSelected}
+                                    aria-label={`${item.fullLabel}: ${formatCurrency(item.total)}, ${item.count} record${item.count === 1 ? '' : 's'}`}
+                                    title={`${item.fullLabel}: ${formatCurrency(item.total)} · ${item.count} record${item.count === 1 ? '' : 's'}`}
+                                    onClick={() => setSelectedTrendKey(previous => previous === item.key ? null : item.key)}
+                                  >
+                                    <span className="payment-chart-track">
+                                      <span
+                                        className={`payment-chart-bar ${isZero ? 'is-zero' : ''}`}
+                                        style={{ height: isZero ? '0%' : `${height}%` }}
+                                      />
+                                    </span>
+                                    <span className="payment-chart-label">{item.shortLabel}</span>
+                                    <span className="payment-chart-value">{formatCompactCurrency(item.total)}</span>
+                                    <span className="payment-chart-count">{item.count} rec</span>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedTrend && (
+                        <div className="payment-chart-detail" role="status" aria-live="polite">
+                          <div className="payment-chart-detail-main">
+                            <span className="payment-chart-detail-label">{granularityLabel} · {selectedTrend.fullLabel}</span>
+                            <strong>{formatCurrency(selectedTrend.total)}</strong>
+                          </div>
+                          <span className="payment-chart-detail-meta">
+                            {selectedTrend.count} record{selectedTrend.count === 1 ? '' : 's'} · {selectedTrend.days} payment day{selectedTrend.days === 1 ? '' : 's'} · Avg {formatCurrency(selectedTrend.count ? selectedTrend.total / selectedTrend.count : 0)} per record
+                          </span>
+                        </div>
+                      )}
+
                       {chart.hiddenCount > 0 && (
                         <div className="payment-limit-note">
-                          <span>Showing {chart.visible.length} of {chart.series.length} {granularity} periods with payments.</span>
+                          <span>Showing the latest {chart.visible.length} of {chart.series.length} {granularity} periods with payments.</span>
                           <button type="button" className="link-button" onClick={() => updateLimit('trend', 'all')}>Show all</button>
                         </div>
+                      )}
+                      {data.filtered.missingPaidBackDateCount > 0 && (
+                        <p className="payment-chart-note">
+                          {data.filtered.missingPaidBackDateCount} paid-back record{data.filtered.missingPaidBackDateCount === 1 ? ' has' : 's have'} no recorded date and {data.filtered.missingPaidBackDateCount === 1 ? 'is' : 'are'} not plotted.
+                        </p>
                       )}
                     </>
                   )}
@@ -541,56 +544,6 @@ export default function PaymentSummary() {
                         );
                       })}
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className={`payment-panel payment-activity-panel ${sectionsOpen.activity ? 'payment-panel-open' : 'payment-panel-collapsed'}`}>
-            <div className="payment-panel-header">
-              <div>
-                <h3 className="payment-panel-title">Recent activity</h3>
-                <p className="payment-panel-hint">Latest recorded payments and pending submissions</p>
-              </div>
-              <div className="payment-panel-controls">
-                <div className="payment-panel-actions">
-                  <ListLimitSelect
-                    id="payment-activity-limit"
-                    label="Show"
-                    value={limits.activity}
-                    onChange={value => updateLimit('activity', value)}
-                    inline
-                  />
-                  <SectionToggle
-                    expanded={sectionsOpen.activity}
-                    onClick={() => toggleSection('activity')}
-                    controls="payment-activity-panel"
-                    label="Recent activity"
-                  />
-                </div>
-              </div>
-            </div>
-            {sectionsOpen.activity && (
-              <div className="payment-panel-body" id="payment-activity-panel">
-                {visibleActivity.length === 0 ? (
-                  <div className="payment-state payment-state-empty">
-                    <Clock size={22} aria-hidden="true" />
-                    <span>No recent activity.</span>
-                  </div>
-                ) : (
-                  <>
-                    <ul className="payment-timeline">
-                      {visibleActivity.map((event, index) => (
-                        <ActivityItem key={`${event.type}-${event.record._id || index}-${event.at || index}`} event={event} />
-                      ))}
-                    </ul>
-                    {activityTotal > visibleActivity.length && (
-                      <div className="payment-limit-note">
-                        <span>Showing {visibleActivity.length} of {activityTotal} activity item{activityTotal === 1 ? '' : 's'}.</span>
-                        <button type="button" className="link-button" onClick={() => updateLimit('activity', 'all')}>Show all</button>
-                      </div>
-                    )}
                   </>
                 )}
               </div>

@@ -11,6 +11,7 @@
     "test:api": "node scripts/seed-test-db.js && (test -f tests/api-test.js && node tests/api-test.js || echo 'Note: tests/api-test.js is local-only (tests/ is gitignored) - skipping.')",
     "test:downtime:unit": "node tests/downtime-unit-test.js",
     "test:payments:unit": "node tests/payment-summary-unit-test.js",
+    "test:payments:trend": "node tests/payment-trend-unit-test.js",
     "test:payments:api": "node tests/payment-summary-api-test.js",
     "test:payments:e2e": "node tests/payment-summary-e2e.js",
     "test:downtime:api": "node tests/downtime-api-test.js",

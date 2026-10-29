@@ -47,6 +47,15 @@ export const formatCurrency = (amount) => {
   }).format(amount || 0);
 };
 
+export const formatCompactCurrency = (amount) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(amount || 0);
+};
+
 export const getStatusColor = (status) => {
   if (status === 'pending') return 'status-pending';
   if (status === 'paid_back') return 'status-paid';

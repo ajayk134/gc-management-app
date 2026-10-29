@@ -85,6 +85,13 @@ async function openSection(scope, name) {
       assert.ok((await summary.locator('.payment-summary-alltime').innerText()).includes('paid-back record'));
     });
 
+    await test('recent activity is no longer shown on the user dashboard', async () => {
+      const summary = page.locator('.payment-summary');
+      assert.equal(await summary.getByRole('heading', { name: 'Recent activity' }).count(), 0);
+      assert.equal(await summary.locator('.payment-activity-panel').count(), 0);
+      assert.equal(await summary.locator('.payment-timeline').count(), 0);
+    });
+
     await test('daily payment groups expand to show individual records and amounts', async () => {
       const summary = page.locator('.payment-summary');
       await openSection(summary, 'Payment history by date');
@@ -124,6 +131,15 @@ async function openSection(scope, name) {
       await summary.getByRole('button', { name: 'Monthly', exact: true }).click();
       await summary.locator('.payment-chart-column').first().waitFor({ timeout: 15000 });
       await summary.getByRole('button', { name: 'Daily', exact: true }).click();
+
+      const firstBar = summary.locator('.payment-chart-column-btn').first();
+      await firstBar.click();
+      const detail = summary.locator('.payment-chart-detail');
+      await detail.waitFor({ timeout: 15000 });
+      assert.ok((await detail.innerText()).includes('₹'), 'trend detail should show an exact currency total');
+      assert.equal(await firstBar.getAttribute('aria-pressed'), 'true');
+      assert.ok((await summary.locator('.payment-chart-meta').innerText()).includes('Daily'));
+      assert.ok((await summary.locator('.payment-chart-yaxis-label').first().innerText()).includes('₹'));
     });
 
     await test('pending payments are clearly separated from recorded payments', async () => {
@@ -207,6 +223,16 @@ async function openSection(scope, name) {
           const toggle = mobilePage.locator('.records-section .section-collapse-btn');
           assert.equal((await toggle.innerText()).trim(), '');
           assert.equal(await toggle.getAttribute('aria-label'), 'Collapse My Gift Cards');
+
+          const summary = mobilePage.locator('.payment-summary');
+          await openSection(summary, 'Payment trend');
+          const trendPanel = summary.locator('.payment-trend-panel');
+          const trendPanelBox = await trendPanel.boundingBox();
+          const trendControlsBox = await trendPanel.locator('.payment-panel-controls').boundingBox();
+          assert.ok(trendControlsBox.width <= trendPanelBox.width + 1, `${width}px: trend controls should stay inside the panel`);
+          await trendPanel.locator('.payment-chart-column-btn').first().waitFor({ timeout: 15000 });
+          const chartScrollOverflow = await trendPanel.locator('.payment-chart-scroll').evaluate(el => el.scrollWidth - el.clientWidth);
+          assert.ok(chartScrollOverflow >= 0, `${width}px: trend chart should scroll inside its container`);
 
           const overflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
           assert.ok(overflow <= 1, `${width}px: page should not overflow horizontally (overflow ${overflow}px)`);
