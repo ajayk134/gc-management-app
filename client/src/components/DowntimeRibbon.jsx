@@ -12,8 +12,11 @@ export default function DowntimeRibbon({ showActive = false }) {
       <div className="downtime-ribbon downtime-ribbon-live" role="status">
         <span className="downtime-ribbon-icon" aria-hidden="true"><Wrench size={15} /></span>
         <span className="downtime-ribbon-text">
-          <strong>Maintenance in progress.</strong>{' '}
-          Admin access remains available until {formatDateTime(downtime?.endAt)}.
+          <strong>Maintenance mode is on.</strong>{' '}
+          {downtime?.message || 'New gift card submissions are temporarily paused. You can still sign in and view existing records.'}
+          {downtime?.startAt && (
+            <span className="downtime-ribbon-since"> Since {formatDateTime(downtime.startAt)}.</span>
+          )}
         </span>
       </div>
     );

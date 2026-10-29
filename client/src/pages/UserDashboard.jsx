@@ -3,6 +3,7 @@ import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import DowntimeRibbon from '../components/DowntimeRibbon';
+import { useDowntime } from '../context/DowntimeContext';
 import api from '../utils/api';
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
@@ -11,6 +12,7 @@ import toast from 'react-hot-toast';
 
 export default function UserDashboard() {
   const { user, logout } = useAuth();
+  const { active: downtimeActive } = useDowntime();
   const [records, setRecords] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,10 @@ export default function UserDashboard() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    if (!editingRecord && downtimeActive) {
+      setFormError('New gift card records cannot be submitted while maintenance mode is active.');
+      return;
+    }
     try {
       const body = {
         ...formData,
@@ -142,7 +148,7 @@ export default function UserDashboard() {
       </header>
 
       <div className="main-content">
-        <DowntimeRibbon />
+        <DowntimeRibbon showActive />
         <h2 className="section-title">My Dashboard</h2>
 
         <div className="stats-grid">
@@ -192,8 +198,14 @@ export default function UserDashboard() {
 
         <div className="section-header">
           <h2 className="section-title">My Gift Cards</h2>
-          <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}>
-            + Add Record
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => { setEditingRecord(null); setFormData(emptyForm); setFormError(''); setShowForm(true); }}
+            disabled={downtimeActive}
+            title={downtimeActive ? 'New records are paused during maintenance' : undefined}
+          >
+            {downtimeActive ? 'Maintenance mode' : '+ Add Record'}
           </button>
         </div>
 
@@ -363,7 +375,9 @@ export default function UserDashboard() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{editingRecord ? 'Update' : 'Create'}</button>
+                <button type="submit" className="btn btn-primary" disabled={!editingRecord && downtimeActive}>
+                  {editingRecord ? 'Update' : downtimeActive ? 'Maintenance mode' : 'Create'}
+                </button>
               </div>
             </form>
           </div>

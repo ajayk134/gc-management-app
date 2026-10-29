@@ -26,24 +26,30 @@ const auth = async (req, res, next) => {
       return res.status(403).json({ error: 'Account is disabled' });
     }
 
-    // Regular users are blocked while a scheduled downtime window is active.
-    // Administrators are always allowed through so they can manage downtime.
-    if (user.role !== 'admin') {
-      const activeDowntime = await findActiveDowntime();
-      if (activeDowntime) {
-        return res.status(503).json({
-          error: 'The application is temporarily unavailable due to scheduled maintenance.',
-          code: 'DOWNTIME_ACTIVE',
-          downtime: serializeDowntime(activeDowntime)
-        });
-      }
-    }
-
     req.user = user;
     req.userId = user._id;
     next();
   } catch (error) {
     res.status(500).json({ error: 'Authentication error' });
+  }
+};
+
+// Blocks creating new gift card records while maintenance mode is active.
+// Reading records, signing in, and all other existing-data operations remain
+// available to every user (including administrators).
+const blockDuringDowntime = async (req, res, next) => {
+  try {
+    const activeDowntime = await findActiveDowntime();
+    if (activeDowntime) {
+      return res.status(503).json({
+        error: 'New gift card records cannot be submitted while maintenance mode is active. Existing records remain available.',
+        code: 'DOWNTIME_ACTIVE',
+        downtime: serializeDowntime(activeDowntime)
+      });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check maintenance status' });
   }
 };
 
@@ -61,4 +67,4 @@ const userOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { auth, adminOnly, userOnly };
+module.exports = { auth, adminOnly, userOnly, blockDuringDowntime };

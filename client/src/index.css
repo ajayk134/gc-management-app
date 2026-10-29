@@ -2105,7 +2105,84 @@ input[type="checkbox"] {
 
 .downtime-ribbon-live .downtime-ribbon-icon { color: var(--danger); }
 
+.downtime-ribbon-since { color: inherit; opacity: 0.78; }
+
 .login-card .downtime-ribbon { margin-bottom: 1rem; }
+
+.downtime-control-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.downtime-control-card-active {
+  border-color: var(--danger-light);
+  background: var(--danger-bg);
+}
+
+.downtime-control-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  min-width: 0;
+}
+
+.downtime-control-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.downtime-control-icon-active {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.downtime-control-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
+}
+
+.downtime-control-eyebrow {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.downtime-control-title {
+  color: var(--gray-900);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.downtime-control-card-active .downtime-control-title { color: var(--danger); }
+
+.downtime-control-text {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.downtime-control-button { flex-shrink: 0; }
 
 .downtime-page {
   flex: 1;
@@ -2262,9 +2339,15 @@ input[type="checkbox"] {
 [data-theme="dark"] .downtime-ribbon-live .downtime-ribbon-icon { color: #fca5a5; }
 
 [data-theme="dark"] .downtime-page-card,
-[data-theme="dark"] .downtime-summary-card {
+[data-theme="dark"] .downtime-summary-card,
+[data-theme="dark"] .downtime-control-card {
   background: var(--surface);
   border-color: var(--gray-200);
+}
+
+[data-theme="dark"] .downtime-control-card-active {
+  background: var(--danger-bg);
+  border-color: var(--danger-light);
 }
 
 [data-theme="dark"] .downtime-summary-card-active {
@@ -2284,6 +2367,8 @@ input[type="checkbox"] {
 
 @media (max-width: 768px) {
   .downtime-ribbon { font-size: 0.75rem; padding: 0.4375rem 0.625rem; }
+  .downtime-control-card { flex-direction: column; align-items: stretch; }
+  .downtime-control-button { width: 100%; }
   .downtime-page { padding: 1.5rem 0.75rem; }
   .downtime-page-card { padding: 1.5rem 1.125rem; }
   .downtime-page-title { font-size: 1.375rem; }

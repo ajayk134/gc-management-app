@@ -19,7 +19,7 @@ const downtimeSchema = new mongoose.Schema({
   },
   endAt: {
     type: Date,
-    required: true
+    default: null
   },
   status: {
     type: String,

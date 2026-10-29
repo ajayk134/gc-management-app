@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt, Clock, Banknote } from 'lucide-react';
+import { Users, UserCheck, CreditCard, Hourglass, CheckCircle2, Wallet, Receipt, Clock, Banknote, Power, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import DowntimeRibbon from '../components/DowntimeRibbon';
@@ -293,6 +293,7 @@ function AdminStats() {
 }
 
 function AdminRecords() {
+  const { active: downtimeActive } = useDowntime();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -350,6 +351,10 @@ function AdminRecords() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    if (!editingRecord && downtimeActive) {
+      setFormError('New gift card records cannot be submitted while maintenance mode is active.');
+      return;
+    }
     try {
       const body = {
         ...formData,
@@ -593,7 +598,13 @@ function AdminRecords() {
       <div className="section-header">
         <h2 className="section-title">All GC Records</h2>
         <div className="section-actions">
-          <button type="button" className="btn btn-primary" onClick={() => { setEditingRecord(null); setFormData({ ...emptyForm, userId: users.filter(u => u.role === 'user')[0]?._id || '' }); setFormError(''); setAddingProvider(false); setNewProvider(''); setShowForm(true); }}>+ Add Record</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => { setEditingRecord(null); setFormData({ ...emptyForm, userId: users.filter(u => u.role === 'user')[0]?._id || '' }); setFormError(''); setAddingProvider(false); setNewProvider(''); setShowForm(true); }}
+            disabled={downtimeActive}
+            title={downtimeActive ? 'New records are paused during maintenance' : undefined}
+          >{downtimeActive ? 'Maintenance mode' : '+ Add Record'}</button>
           <button type="button" className="btn btn-outline" onClick={() => handleExport('csv')}>Export CSV</button>
           <button type="button" className="btn btn-outline" onClick={() => handleExport('excel')}>Export Excel</button>
         </div>
@@ -878,7 +889,9 @@ function AdminRecords() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{editingRecord ? 'Update' : 'Create'}</button>
+                <button type="submit" className="btn btn-primary" disabled={!editingRecord && downtimeActive}>
+                  {editingRecord ? 'Update' : downtimeActive ? 'Maintenance mode' : 'Create'}
+                </button>
               </div>
             </form>
           </div>
@@ -956,6 +969,7 @@ function AdminDowntime() {
   const [actionId, setActionId] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [formError, setFormError] = useState('');
+  const [toggling, setToggling] = useState(false);
 
   useModalScrollLock(showForm || Boolean(pendingAction));
 
@@ -986,6 +1000,21 @@ function AdminDowntime() {
     setFormData(defaultDowntimeForm());
     setFormError('');
     setShowForm(true);
+  };
+
+  const toggleMaintenance = async () => {
+    const nextEnabled = !data.active;
+    setToggling(true);
+    try {
+      await api.put('/api/downtime', { enabled: nextEnabled });
+      toast.success(nextEnabled ? 'Maintenance mode enabled' : 'Maintenance mode disabled');
+      await fetchData(false);
+      refreshDowntimeStatus();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setToggling(false);
+    }
   };
 
   const buildPayload = (immediate = false) => {
@@ -1071,13 +1100,13 @@ function AdminDowntime() {
   const actionCopy = {
     start: {
       title: 'Start downtime now',
-      message: 'Regular users will be blocked from the application immediately. Administrators will keep access. Continue?',
+      message: 'New gift card submissions will be blocked immediately. Users can still sign in and view existing records. Continue?',
       confirmLabel: 'Start now',
       danger: false
     },
     stop: {
       title: 'Stop active downtime',
-      message: 'End the active maintenance window now and restore regular user access?',
+      message: 'End the active maintenance window now and allow new gift card submissions again?',
       confirmLabel: 'Stop downtime',
       danger: true
     },
@@ -1100,8 +1129,35 @@ function AdminDowntime() {
   return (
     <div>
       <div className="section-header">
-        <h2 className="section-title">Scheduled Downtime</h2>
+        <h2 className="section-title">Maintenance &amp; Downtime</h2>
         <button type="button" className="btn btn-primary" onClick={openForm}>+ Schedule Downtime</button>
+      </div>
+
+      <div className={`downtime-control-card ${data.active ? 'downtime-control-card-active' : ''}`}>
+        <div className="downtime-control-main">
+          <div className={`downtime-control-icon ${data.active ? 'downtime-control-icon-active' : ''}`} aria-hidden="true">
+            {data.active ? <Wrench size={22} /> : <Power size={22} />}
+          </div>
+          <div className="downtime-control-copy">
+            <span className="downtime-control-eyebrow">Maintenance mode</span>
+            <strong className="downtime-control-title">
+              {data.active ? 'New gift card submissions are paused' : 'Application is live'}
+            </strong>
+            <p className="downtime-control-text">
+              {data.active
+                ? (data.current?.message || 'Users can still sign in and view existing records. Only new gift card submissions are blocked.')
+                : 'Enable maintenance mode to immediately block new gift card submissions while keeping existing records available.'}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className={`btn ${data.active ? 'btn-danger' : 'btn-primary'} downtime-control-button`}
+          onClick={toggleMaintenance}
+          disabled={toggling}
+        >
+          {toggling ? 'Updating...' : data.active ? 'Disable maintenance mode' : 'Enable maintenance mode'}
+        </button>
       </div>
 
       <div className="downtime-summary-grid">
@@ -1112,8 +1168,8 @@ function AdminDowntime() {
           </strong>
           <span className="downtime-summary-meta">
             {data.active && data.current
-              ? `Until ${formatDateTime(data.current.endAt)}`
-              : 'Regular users can access the application'}
+              ? (data.current.endAt ? `Until ${formatDateTime(data.current.endAt)}` : 'Until an administrator disables maintenance')
+              : 'All users can access the application and create records'}
           </span>
         </div>
         <div className="downtime-summary-card">

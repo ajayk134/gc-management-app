@@ -41,9 +41,6 @@ async function login(email, password) {
   return req('POST', '/api/auth/login', { body: { email, password } });
 }
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const iso = (offsetMs) => new Date(Date.now() + offsetMs).toISOString();
-
 (async () => {
   assert.ok(ADMIN_EMAIL && ADMIN_PASSWORD && USER_EMAIL && USER_PASSWORD, 'TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD, TEST_USER_EMAIL and TEST_USER_PASSWORD are required');
   const adminLogin = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -61,6 +58,7 @@ const iso = (offsetMs) => new Date(Date.now() + offsetMs).toISOString();
   }
 
   async function cleanup() {
+    await req('PUT', '/api/downtime', { user: admin, body: { enabled: false } });
     const list = await currentDowntimes();
     for (const item of list) {
       if (item.status === 'active') {
@@ -68,9 +66,10 @@ const iso = (offsetMs) => new Date(Date.now() + offsetMs).toISOString();
       } else if (item.status === 'scheduled') {
         await req('POST', `/api/downtime/${item._id}/cancel`, { user: admin });
       }
-      const latest = await currentDowntimes();
-      const saved = latest.find(d => d._id === item._id);
-      if (saved && ['completed', 'cancelled'].includes(saved.status)) {
+    }
+    const latest = await currentDowntimes();
+    for (const item of latest) {
+      if (['completed', 'cancelled'].includes(item.status)) {
         await req('DELETE', `/api/downtime/${item._id}`, { user: admin });
       }
     }
@@ -78,176 +77,118 @@ const iso = (offsetMs) => new Date(Date.now() + offsetMs).toISOString();
 
   await cleanup();
 
-  await test('public downtime status is available without authentication', async () => {
+  await test('public maintenance status is available without authentication', async () => {
     const r = await req('GET', '/api/downtime/status');
     assert.equal(r.status, 200);
     assert.equal(typeof r.data.active, 'boolean');
+    assert.equal(r.data.active, false);
     assert.ok(r.data.serverTime);
   });
 
-  await test('regular users cannot access downtime administration', async () => {
+  await test('regular users cannot enable or disable maintenance mode', async () => {
     const list = await req('GET', '/api/downtime', { user });
     assert.equal(list.status, 403);
-    const create = await req('POST', '/api/downtime', { user, body: { startAt: iso(3600000), endAt: iso(7200000) } });
-    assert.equal(create.status, 403);
+    const toggle = await req('PUT', '/api/downtime', { user, body: { enabled: true } });
+    assert.equal(toggle.status, 403);
+    const toggleAlias = await req('POST', '/api/downtime/toggle', { user, body: { enabled: true } });
+    assert.equal(toggleAlias.status, 403);
   });
 
-  await test('admin can schedule future downtime and it appears as upcoming', async () => {
-    const r = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { title: 'API Test Window', message: 'Integration test maintenance', startAt: iso(2 * 60 * 60 * 1000), endAt: iso(3 * 60 * 60 * 1000) }
-    });
-    assert.equal(r.status, 201);
-    assert.equal(r.data.downtime.status, 'scheduled');
-    assert.equal(r.data.downtime.title, 'API Test Window');
-    const status = await req('GET', '/api/downtime/status');
-    assert.equal(status.data.active, false);
-    assert.equal(status.data.upcoming._id, r.data.downtime._id);
+  await test('admin toggle requires an explicit boolean state', async () => {
+    const r = await req('PUT', '/api/downtime', { user: admin, body: {} });
+    assert.equal(r.status, 400);
   });
 
-  await test('overlapping downtime windows are rejected', async () => {
-    const r = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { startAt: iso(2.5 * 60 * 60 * 1000), endAt: iso(4 * 60 * 60 * 1000) }
-    });
-    assert.equal(r.status, 409);
-  });
-
-  await test('invalid downtime windows are rejected', async () => {
-    const inverted = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { startAt: iso(3 * 60 * 60 * 1000), endAt: iso(2 * 60 * 60 * 1000) }
-    });
-    assert.equal(inverted.status, 400);
-    const missing = await req('POST', '/api/downtime', { user: admin, body: {} });
-    assert.equal(missing.status, 400);
-    const past = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { startAt: iso(-2 * 60 * 60 * 1000), endAt: iso(-60 * 60 * 1000) }
-    });
-    assert.equal(past.status, 400);
-  });
-
-  let scheduled;
-  let immediate;
-
-  await test('scheduled downtime can be started immediately', async () => {
-    const list = await currentDowntimes();
-    scheduled = list.find(d => d.title === 'API Test Window');
-    assert.ok(scheduled);
-    const r = await req('POST', `/api/downtime/${scheduled._id}/start`, { user: admin });
+  await test('admin can enable maintenance mode immediately', async () => {
+    const r = await req('PUT', '/api/downtime', { user: admin, body: { enabled: true } });
     assert.equal(r.status, 200);
-    assert.equal(r.data.downtime.status, 'active');
-    assert.ok(r.data.downtime.startedAt);
+    assert.equal(r.data.active, true);
+    assert.equal(r.data.current.status, 'active');
+    assert.equal(r.data.current.endAt, null);
+    assert.ok(r.data.current.message);
+
     const status = await req('GET', '/api/downtime/status');
+    assert.equal(status.status, 200);
     assert.equal(status.data.active, true);
-    assert.equal(status.data.downtime._id, scheduled._id);
+    assert.equal(status.data.enabled, true);
+    assert.ok(status.data.message);
   });
 
-  await test('active downtime blocks regular user APIs but allows login and admin access', async () => {
-    for (const path of ['/api/gc-records', '/api/stats/user', '/api/providers', '/api/auth/me']) {
+  await test('login and all read-only user APIs remain available during maintenance', async () => {
+    const loginDuring = await login(USER_EMAIL, USER_PASSWORD);
+    assert.equal(loginDuring.status, 200);
+
+    for (const path of ['/api/auth/me', '/api/gc-records', '/api/stats/user', '/api/providers']) {
       const r = await req('GET', path, { user });
-      assert.equal(r.status, 503, `${path} should be blocked`);
-      assert.equal(r.data.code, 'DOWNTIME_ACTIVE');
-      assert.ok(r.data.downtime);
+      assert.equal(r.status, 200, `${path} should remain readable`);
     }
-    const userLoginDuringDowntime = await login(USER_EMAIL, USER_PASSWORD);
-    assert.equal(userLoginDuringDowntime.status, 200);
+
     const adminUsers = await req('GET', '/api/users', { user: admin });
     assert.equal(adminUsers.status, 200);
     const adminRecords = await req('GET', '/api/gc-records', { user: admin });
     assert.equal(adminRecords.status, 200);
   });
 
-  await test('active downtime can be stopped early and access is restored', async () => {
-    const r = await req('POST', `/api/downtime/${scheduled._id}/stop`, { user: admin });
-    assert.equal(r.status, 200);
-    assert.equal(r.data.downtime.status, 'completed');
-    assert.ok(r.data.downtime.stoppedAt);
+  await test('creating a new gift card record is blocked for regular users', async () => {
+    const r = await req('POST', '/api/gc-records', {
+      user,
+      body: { giftCard: 'BLOCKED-' + Date.now(), giftCardPin: '0000', giftCardAmount: 100, paid: 80, provider: 'Flipkart' }
+    });
+    assert.equal(r.status, 503);
+    assert.equal(r.data.code, 'DOWNTIME_ACTIVE');
+    assert.ok(r.data.downtime);
+  });
+
+  await test('creating a new gift card record is blocked for administrators too', async () => {
+    const r = await req('POST', '/api/gc-records', {
+      user: admin,
+      body: { userId: user.id || user._id, giftCard: 'BLOCKED-ADMIN-' + Date.now(), giftCardPin: '0001', giftCardAmount: 100, paid: 80, provider: 'Flipkart' }
+    });
+    assert.equal(r.status, 503);
+    assert.equal(r.data.code, 'DOWNTIME_ACTIVE');
+  });
+
+  await test('admin can disable maintenance mode and creation works again', async () => {
+    const off = await req('PUT', '/api/downtime', { user: admin, body: { enabled: false } });
+    assert.equal(off.status, 200);
+    assert.equal(off.data.active, false);
+
     const status = await req('GET', '/api/downtime/status');
     assert.equal(status.data.active, false);
-    const userRecords = await req('GET', '/api/gc-records', { user });
-    assert.equal(userRecords.status, 200);
-  });
 
-  await test('admin can create downtime that starts immediately', async () => {
-    const r = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { title: 'Immediate Window', message: 'Starting now', startAt: iso(-1000), endAt: iso(5 * 60 * 1000) }
-    });
-    assert.equal(r.status, 201);
-    assert.equal(r.data.downtime.status, 'active');
-    immediate = r.data.downtime;
-    const blocked = await req('GET', '/api/gc-records', { user });
-    assert.equal(blocked.status, 503);
-    const stop = await req('POST', `/api/downtime/${immediate._id}/stop`, { user: admin });
-    assert.equal(stop.status, 200);
-  });
-
-  await test('future scheduled downtime can be cancelled', async () => {
-    const created = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { title: 'Cancel Me', startAt: iso(6 * 60 * 60 * 1000), endAt: iso(7 * 60 * 60 * 1000) }
+    const card = 'ALLOWED-' + Date.now();
+    const created = await req('POST', '/api/gc-records', {
+      user,
+      body: { giftCard: card, giftCardPin: '1234', giftCardAmount: 250, paid: 200, provider: 'Amazon' }
     });
     assert.equal(created.status, 201);
-    const cancelled = await req('POST', `/api/downtime/${created.data.downtime._id}/cancel`, { user: admin });
-    assert.equal(cancelled.status, 200);
-    assert.equal(cancelled.data.downtime.status, 'cancelled');
-    const status = await req('GET', '/api/downtime/status');
-    assert.equal(status.data.upcoming, null);
+    assert.equal(created.data.record.giftCard, card);
+
+    const list = await req('GET', '/api/gc-records?search=' + encodeURIComponent(card), { user });
+    assert.equal(list.status, 200);
+    assert.ok(list.data.records.some(r => r.giftCard === card));
+
+    await req('DELETE', `/api/gc-records/${created.data.record._id}`, { user: admin });
   });
 
-  await test('downtime activates automatically when its start time arrives', async () => {
-    const created = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { title: 'Auto Activate', startAt: iso(1500), endAt: iso(60 * 1000) }
-    });
-    assert.equal(created.status, 201);
-    assert.equal(created.data.downtime.status, 'scheduled');
-    await sleep(2300);
-    const status = await req('GET', '/api/downtime/status');
-    assert.equal(status.data.active, true);
-    assert.equal(status.data.downtime._id, created.data.downtime._id);
-    const blocked = await req('GET', '/api/gc-records', { user });
-    assert.equal(blocked.status, 503);
-    await req('POST', `/api/downtime/${created.data.downtime._id}/stop`, { user: admin });
+  await test('toggle is idempotent and persists in the downtime collection', async () => {
+    const first = await req('PUT', '/api/downtime', { user: admin, body: { enabled: true } });
+    assert.equal(first.status, 200);
+    const second = await req('PUT', '/api/downtime', { user: admin, body: { enabled: true } });
+    assert.equal(second.status, 200);
+    assert.equal(second.data.current._id, first.data.current._id);
+
+    const list = await req('GET', '/api/downtime', { user: admin });
+    const activeItems = list.data.downtimes.filter(d => d.status === 'active');
+    assert.equal(activeItems.length, 1);
+
+    await req('PUT', '/api/downtime', { user: admin, body: { enabled: false } });
+    const after = await req('GET', '/api/downtime', { user: admin });
+    assert.equal(after.data.active, false);
+    assert.equal(after.data.downtimes.filter(d => d.status === 'active').length, 0);
   });
 
-  await test('downtime expires automatically when its end time passes', async () => {
-    const created = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { title: 'Auto Expire', startAt: iso(-1000), endAt: iso(1200) }
-    });
-    assert.equal(created.status, 201);
-    assert.equal(created.data.downtime.status, 'active');
-    await sleep(2000);
-    const status = await req('GET', '/api/downtime/status');
-    assert.equal(status.data.active, false);
-    const userRecords = await req('GET', '/api/gc-records', { user });
-    assert.equal(userRecords.status, 200);
-  });
-
-  await test('completed and cancelled entries can be deleted but active entries cannot', async () => {
-    const created = await req('POST', '/api/downtime', {
-      user: admin,
-      body: { title: 'Deletion Guard', startAt: iso(-1000), endAt: iso(60 * 1000) }
-    });
-    assert.equal(created.status, 201);
-    const blockedDelete = await req('DELETE', `/api/downtime/${created.data.downtime._id}`, { user: admin });
-    assert.equal(blockedDelete.status, 400);
-    await req('POST', `/api/downtime/${created.data.downtime._id}/stop`, { user: admin });
-    const allowedDelete = await req('DELETE', `/api/downtime/${created.data.downtime._id}`, { user: admin });
-    assert.equal(allowedDelete.status, 200);
-  });
-
-  await test('invalid and missing downtime IDs are handled safely', async () => {
-    const bad = await req('POST', '/api/downtime/not-an-id/stop', { user: admin });
-    assert.equal(bad.status, 400);
-    const missing = await req('POST', '/api/downtime/000000000000000000000000/stop', { user: admin });
-    assert.equal(missing.status, 404);
-  });
-
-  await test('downtime actions are recorded in the audit log', async () => {
+  await test('maintenance actions are recorded in the audit log', async () => {
     const r = await req('GET', '/api/audit?action=downtime_started&limit=20', { user: admin });
     assert.equal(r.status, 200);
     assert.ok(r.data.logs.length >= 1);

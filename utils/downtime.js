@@ -3,6 +3,7 @@ const Downtime = require('../models/Downtime');
 const OPEN_STATUSES = ['scheduled', 'active'];
 
 const toDate = (value) => {
+  if (value === null || value === undefined || value === '') return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 };
@@ -18,9 +19,9 @@ const effectiveStatus = (downtime, now = new Date()) => {
   const endAt = toDate(downtime.endAt);
   const current = toDate(now);
 
-  if (!startAt || !endAt || !current) return status;
-  if (endAt <= current) return 'completed';
-  if (startAt <= current && endAt > current) return 'active';
+  if (!startAt || !current) return status;
+  if (endAt && endAt <= current) return 'completed';
+  if (startAt <= current && (!endAt || endAt > current)) return 'active';
   return 'scheduled';
 };
 
@@ -34,7 +35,7 @@ const serializeDowntime = (downtime, now = new Date()) => {
 const activeFilter = (now = new Date()) => ({
   status: { $in: OPEN_STATUSES },
   startAt: { $lte: now },
-  endAt: { $gt: now }
+  $or: [{ endAt: { $gt: now } }, { endAt: null }]
 });
 
 const upcomingFilter = (now = new Date()) => ({

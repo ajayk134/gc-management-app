@@ -37,7 +37,11 @@ export const DowntimeProvider = ({ children }) => {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 20000);
+    const interval = setInterval(refresh, 5000);
+
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
 
     const onDowntimeActive = (event) => {
       setState(prev => ({
@@ -50,6 +54,8 @@ export const DowntimeProvider = ({ children }) => {
     window.addEventListener('gc:downtime-active', onDowntimeActive);
     return () => {
       clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('gc:downtime-active', onDowntimeActive);
     };
   }, [refresh]);

@@ -6,6 +6,7 @@ const { logAction } = require('../utils/audit');
 const {
   effectiveStatus,
   serializeDowntime,
+  activeFilter,
   findActiveDowntime,
   findUpcomingDowntime,
   findOverlappingDowntime,
@@ -29,6 +30,8 @@ router.get('/status', async (req, res) => {
     res.json({
       serverTime: now.toISOString(),
       active: Boolean(active),
+      enabled: Boolean(active),
+      message: active?.message || '',
       downtime: serializeDowntime(active, now),
       upcoming: serializeDowntime(upcoming, now)
     });
@@ -42,6 +45,81 @@ router.get('/status', async (req, res) => {
 // exempt from the application-wide downtime guard so they can always manage it.
 router.use(auth, adminOnly);
 
+const setMaintenanceState = async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be true or false' });
+    }
+
+    const now = new Date();
+    const title = cleanText(req.body.title, 120) || 'Maintenance in progress';
+    const message = cleanText(req.body.message, 500)
+      || 'New gift card submissions are temporarily paused while maintenance is completed. Existing records remain available.';
+
+    let current = await findActiveDowntime(now);
+
+    if (enabled) {
+      if (current) {
+        if (req.body.title !== undefined) current.title = title;
+        if (req.body.message !== undefined) current.message = message;
+        await current.save();
+      } else {
+        current = await Downtime.create({
+          title,
+          message,
+          startAt: now,
+          endAt: null,
+          status: 'active',
+          startedAt: now,
+          createdBy: req.userId
+        });
+
+        await logAction('downtime_started', req.userId, 'downtime', current._id, {
+          title: current.title,
+          startAt: current.startAt,
+          mode: 'maintenance'
+        }, req.ip);
+      }
+      await current.populate('createdBy', 'name email');
+    } else {
+      const activeEntries = await Downtime.find(activeFilter(now));
+      for (const entry of activeEntries) {
+        entry.endAt = now;
+        entry.status = 'completed';
+        entry.stoppedAt = now;
+        entry.stoppedBy = req.userId;
+        await entry.save();
+
+        await logAction('downtime_stopped', req.userId, 'downtime', entry._id, {
+          title: entry.title,
+          startAt: entry.startAt,
+          endAt: entry.endAt,
+          mode: 'maintenance'
+        }, req.ip);
+      }
+      current = null;
+    }
+
+    res.json({
+      serverTime: now.toISOString(),
+      active: Boolean(current),
+      enabled: Boolean(current),
+      current: serializeDowntime(current, now),
+      downtime: serializeDowntime(current, now),
+      message: current?.message || ''
+    });
+  } catch (error) {
+    console.error('Set maintenance state error:', error);
+    res.status(500).json({ error: 'Failed to update maintenance mode' });
+  }
+};
+
+// Toggle maintenance mode on/off. This is the primary endpoint used by the
+// admin dashboard switch.
+router.put('/', setMaintenanceState);
+router.post('/toggle', setMaintenanceState);
+
 router.get('/', async (req, res) => {
   try {
     const now = new Date();
@@ -54,6 +132,8 @@ router.get('/', async (req, res) => {
     res.json({
       serverTime: now.toISOString(),
       active: Boolean(active),
+      enabled: Boolean(active),
+      message: active?.message || '',
       current: serializeDowntime(active, now),
       upcoming: serializeDowntime(upcoming, now),
       downtimes: downtimes.map(item => serializeDowntime(item, now))

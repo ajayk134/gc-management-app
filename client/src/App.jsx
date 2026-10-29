@@ -6,7 +6,6 @@ import { useTheme } from './context/ThemeContext';
 import Login from './pages/Login';
 import UserDashboard from './pages/UserDashboard';
 import AdminDashboard from './pages/AdminDashboard';
-import DowntimePage from './pages/DowntimePage';
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth();
@@ -21,16 +20,12 @@ function ProtectedRoute({ children, adminOnly = false }) {
 
 function AppRoutes() {
   const { user, loading } = useAuth();
-  const { active: downtimeActive, loading: downtimeLoading } = useDowntime();
+  const { loading: downtimeLoading } = useDowntime();
   
-  if (loading || (user && user.role !== 'admin' && downtimeLoading)) {
+  if (loading || (user && downtimeLoading)) {
     return <div className="loading"><div className="spinner"></div></div>;
   }
 
-  if (user && user.role !== 'admin' && downtimeActive) {
-    return <DowntimePage />;
-  }
-  
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/user'} /> : <Login />} />

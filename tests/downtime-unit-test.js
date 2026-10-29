@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
   effectiveStatus,
   serializeDowntime,
+  activeFilter,
   downtimeWindowError
 } = require('../utils/downtime');
 
@@ -32,6 +33,17 @@ test('window containing now is active even when stored as scheduled', () => {
   assert.equal(effectiveStatus(item, now), 'active');
 });
 
+test('indefinite maintenance with no end time is active while enabled', () => {
+  const item = { status: 'active', startAt: at(-60000), endAt: null };
+  assert.equal(effectiveStatus(item, now), 'active');
+  assert.equal(effectiveStatus(item, at(-120000)), 'scheduled');
+});
+
+test('indefinite maintenance becomes completed after it is stopped', () => {
+  const item = { status: 'completed', startAt: at(-60000), endAt: now, stoppedAt: now };
+  assert.equal(effectiveStatus(item, now), 'completed');
+});
+
 test('window whose end has passed is completed even when stored as active', () => {
   const item = { status: 'active', startAt: at(-120000), endAt: at(-1000) };
   assert.equal(effectiveStatus(item, now), 'completed');
@@ -45,6 +57,12 @@ test('exactly at start is active and exactly at end is completed', () => {
 test('cancelled and completed statuses are terminal', () => {
   assert.equal(effectiveStatus({ status: 'cancelled', startAt: at(-1000), endAt: at(1000) }, now), 'cancelled');
   assert.equal(effectiveStatus({ status: 'completed', startAt: at(-1000), endAt: at(1000) }, now), 'completed');
+});
+
+test('active filter includes indefinite and time-windowed maintenance', () => {
+  const filter = activeFilter(now);
+  assert.deepEqual(filter.$or, [{ endAt: { $gt: now } }, { endAt: null }]);
+  assert.equal(filter.startAt.$lte, now);
 });
 
 test('serializeDowntime computes effective status without mutating stored status', () => {

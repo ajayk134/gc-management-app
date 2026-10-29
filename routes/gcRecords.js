@@ -1,7 +1,7 @@
 const express = require('express');
 const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
-const { auth, adminOnly } = require('../middleware/auth');
+const { auth, adminOnly, blockDuringDowntime } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 const { effectivePaid } = require('../utils/effectivePaid');
 
@@ -109,7 +109,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create record (user or admin)
-router.post('/', async (req, res) => {
+router.post('/', blockDuringDowntime, async (req, res) => {
   try {
     const { giftCard, giftCardPin, giftCardAmount, paid, notes, provider } = req.body;
     

@@ -35,7 +35,7 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - **Dashboard** — Overall statistics with per-user breakdown. Filterable by user and date range.
 - **Records** — View, create, edit, delete, and mark records as paid back. Supports bulk selection and bulk "Mark as Paid Back". Searchable and filterable by status, user, and date range. Undo payment status.
 - **Users** — Create, edit, disable/enable, reset password, and delete users. Each user card shows their GC statistics.
-- **Downtime** — Schedule maintenance windows with start/end date-time, start a scheduled window immediately, stop active downtime early, or cancel future downtime. Administrators always retain access.
+- **Downtime** — Toggle maintenance mode on/off instantly, or schedule future maintenance windows with start/end date-time. While maintenance is active, new gift card submissions are blocked but existing records remain readable. Administrators always retain access.
 - **Audit** — View paginated audit history with action filtering. Sensitive fields (PINs, passwords) are redacted in the UI.
 - **Exports** — Download GC records as CSV or Excel (.xlsx), respecting current filters.
 
@@ -43,7 +43,7 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - **Dashboard** — Personal statistics (total cards, total amount, paid, pending, paid back).
 - **Records** — Submit new GC records, edit, delete, and view own records. Searchable with status and date filters.
 - **No payment actions** — Users cannot mark records as paid; only Admin can.
-- **Downtime notices** — An upcoming-maintenance ribbon shows the scheduled date and time. During active downtime, users see a full maintenance page instead of the application; access resumes automatically when the window ends.
+- **Downtime notices** — A maintenance ribbon shows the current state or upcoming date/time. During maintenance, users can still sign in and view existing records, while new gift card submissions are disabled in the UI and blocked by the API.
 
 ### GC Validation
 - **Duplicate rule (per user):** For the same user, the combination of `giftCard` + `giftCardPin` must be unique. This is enforced both:
@@ -52,14 +52,16 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - Different users may have the same gift card + PIN combination.
 - Edit operations exclude the current record (`_id: { $ne: record._id }`) when checking for duplicates.
 
-### Scheduled Downtime
-- Administrators manage downtime from the **Downtime** tab.
-- A window has a start and end date/time (stored as UTC, entered and displayed in the browser's local time zone), an optional title, and a user-facing message.
+### Maintenance & Scheduled Downtime
+- Administrators manage maintenance from the **Downtime** tab. The primary control is an instant **Enable/Disable maintenance mode** toggle.
+- Maintenance mode is persisted as an active downtime entry in MongoDB, so it survives server restarts. Disabling it marks the entry completed.
+- While maintenance is active, login, record viewing, stats, providers, exports, and audit access remain available. Only creation of new gift card records is blocked.
+- `POST /api/gc-records` returns `503` with code `DOWNTIME_ACTIVE` while maintenance is active, for every role. The user and admin record forms also disable the create action.
+- Administrators can also schedule future downtime windows with a start/end date/time (stored as UTC, entered and displayed in the browser's local time zone), an optional title, and a user-facing message.
 - **Start now** moves a future window's start to the current time; **Stop now** ends active downtime early; **Cancel** removes a future window.
-- Overlapping open windows are rejected (HTTP 409). Active or scheduled entries cannot be deleted until stopped or cancelled.
-- Availability is evaluated from the stored time window on every request, so downtime activates and expires automatically without a background worker.
-- While active, all authenticated non-admin API requests return `503` with code `DOWNTIME_ACTIVE`; login remains available so users can see the maintenance page and administrators can still sign in.
-- The public `GET /api/downtime/status` endpoint powers the login/dashboard ribbon and the maintenance page.
+- Overlapping scheduled windows are rejected (HTTP 409). Active or scheduled entries cannot be deleted until stopped or cancelled.
+- Availability is evaluated from the stored time window on every request, so scheduled downtime activates and expires automatically without a background worker.
+- The public `GET /api/downtime/status` endpoint powers the login/dashboard ribbon and is refreshed every 5 seconds and when the window regains focus.
 
 ### Audit Logging
 The following actions are logged to the `AuditLog` collection:
@@ -126,8 +128,7 @@ gc-management-app/
 │       ├── pages/
 │       │   ├── Login.jsx       # Login page
 │       │   ├── AdminDashboard.jsx  # Admin tabs: Dashboard, Records, Users, Downtime, Audit
-│       │   ├── UserDashboard.jsx   # User dashboard + records
-│       │   └── DowntimePage.jsx    # Full-page maintenance notice
+│       │   └── UserDashboard.jsx   # User dashboard + records
 │       └── utils/
 │           ├── api.js          # ApiClient class (fetch wrapper with session headers)
 │           └── format.js       # Date/currency/status formatting utilities
@@ -164,9 +165,9 @@ gc-management-app/
 ### Structure
 - Single-page app with React Router.
 - `AuthProvider` wraps the entire app, managing auth state via `localStorage`.
-- Four pages/views: `Login`, `AdminDashboard`, `UserDashboard`, `DowntimePage`.
+- Three pages/views: `Login`, `AdminDashboard`, and `UserDashboard`.
 - Admin dashboard uses tabs (Dashboard, Records, Users, Downtime, Audit) within a single component.
-- `DowntimeProvider` polls `/api/downtime/status` every 20 seconds; a 503 `DOWNTIME_ACTIVE` response also updates it immediately.
+- `DowntimeProvider` polls `/api/downtime/status` every 5 seconds; a 503 `DOWNTIME_ACTIVE` response or window focus also refreshes it immediately.
 - All CSS is in a single `client/src/index.css` file.
 
 ### API Calls
@@ -174,7 +175,7 @@ gc-management-app/
 - The client reads the saved user profile from `localStorage` and sends `x-user-id` / `x-user-email` headers.
 - In development, the base URL is `http://localhost:5000`. In production, it is empty (same origin).
 - On 401/403 responses, the client reports the error but keeps the session; logout only happens when the user clicks **Logout**.
-- On 503 `DOWNTIME_ACTIVE`, the client emits a browser event that immediately switches regular users to the maintenance page.
+- On 503 `DOWNTIME_ACTIVE`, the client emits a browser event that immediately shows the maintenance banner and disables create actions.
 - File downloads use `api.downloadFile()` which sends the same session headers and returns a raw `Response` for blob handling.
 
 ### Formatting Utilities
@@ -240,8 +241,10 @@ gc-management-app/
 | `GET /api/stats/user` | Yes | No (userOnly) | User's own aggregated stats |
 | `GET /api/stats/admin` | Yes | Yes | Admin aggregated stats with per-user breakdown |
 | `GET /api/audit` | Yes | Yes | Paginated audit logs |
-| `GET /api/downtime/status` | No | No | Public current/upcoming downtime status |
+| `GET /api/downtime/status` | No | No | Public current/upcoming maintenance status |
 | `GET /api/downtime` | Yes | Yes | List downtime entries with current/upcoming summary |
+| `PUT /api/downtime` | Yes | Yes | Enable/disable maintenance mode (`{ enabled: true/false }`) |
+| `POST /api/downtime/toggle` | Yes | Yes | Alias for the maintenance mode toggle |
 | `POST /api/downtime` | Yes | Yes | Schedule a future window or start one immediately |
 | `POST /api/downtime/:id/start` | Yes | Yes | Start a future scheduled window now |
 | `POST /api/downtime/:id/stop` | Yes | Yes | Stop active downtime early |
@@ -329,7 +332,7 @@ gc-management-app/
 | `title` | String | Optional, max 120 chars |
 | `message` | String | Optional user-facing message, max 500 chars |
 | `startAt` | Date | Required, stored as UTC |
-| `endAt` | Date | Required, must be after `startAt` and in the future at creation |
+| `endAt` | Date | Optional; `null` means indefinite maintenance until disabled. Scheduled windows must be after `startAt` and in the future at creation |
 | `status` | String | `scheduled`, `active`, `completed`, or `cancelled` |
 | `startedAt` / `stoppedAt` / `cancelledAt` | Date | Administrative action timestamps |
 | `stoppedBy` / `cancelledBy` / `createdBy` | ObjectId (ref: User) | Audit references |
@@ -337,7 +340,7 @@ gc-management-app/
 
 **Indexes:** `{ status: 1 }`, `{ startAt: 1, endAt: 1 }`, `{ status: 1, startAt: 1 }`
 
-**Effective status:** open windows (`scheduled`/`active`) are evaluated against the current server time. A window becomes active at `startAt` and completed at `endAt` even if the stored status has not been refreshed.
+**Effective status:** open windows (`scheduled`/`active`) are evaluated against the current server time. A window becomes active at `startAt` and completed at `endAt` even if the stored status has not been refreshed. An entry with no `endAt` stays active until an administrator disables maintenance mode.
 
 ---
 
@@ -352,12 +355,13 @@ gc-management-app/
 6. The session remains active until the user clicks **Logout**. A 401/403 does not clear it automatically.
 
 ### Authorization Rules
-- **`auth` middleware** — Resolves the user from the validated `x-user-id` / `x-user-email` session headers and checks `active` status. During active downtime it returns `503 DOWNTIME_ACTIVE` for non-admin roles.
+- **`auth` middleware** — Resolves the user from the validated `x-user-id` / `x-user-email` session headers and checks `active` status. It does not block reads during maintenance.
+- **`blockDuringDowntime` middleware** — Applied to the GC record creation endpoint. Returns `503 DOWNTIME_ACTIVE` while maintenance is active; login and read-only endpoints are unaffected.
 - **`adminOnly` middleware** — Requires `user.role === 'admin'`. Returns 403 otherwise.
 - **`userOnly` middleware** — Requires `user.role === 'user'`. Returns 403 otherwise.
 - **Ownership checks** — In GC record routes, users can only access their own records (`record.user === req.userId`). Admin bypasses ownership.
 - **Admin protection** — Admin users cannot be modified or deleted by other admins via the user management API.
-- **Downtime bypass** — Administrators are never blocked by downtime and are the only role allowed to manage downtime entries.
+- **Downtime management** — Only administrators can enable/disable maintenance or manage scheduled downtime. Record creation is blocked for every role while maintenance is active.
 
 ### Password Security
 - Hashed with bcrypt, 12 salt rounds.
@@ -453,13 +457,12 @@ UI_BASE=http://localhost:5001 npm run test:downtime:e2e
 ```
 
 ### Downtime Coverage
-- Time-window status calculation and validation (unit).
-- Schedule, overlap rejection, start now, stop early, cancel, delete guards.
-- Public status/upcoming data and administrator-only authorization.
-- Regular-user API blocking during downtime while admin access and login remain available.
-- Automatic activation at start time and automatic expiration at end time.
-- Admin UI scheduling/start/stop/cancel, upcoming ribbon, maintenance page, and mobile rendering.
-- Audit logging for downtime actions.
+- Time-window and indefinite-maintenance status calculation and validation (unit).
+- Maintenance toggle persistence, idempotency, and administrator-only authorization.
+- Login and read-only APIs remain available during maintenance.
+- Gift card record creation is blocked for users and administrators while maintenance is active, then succeeds after disabling.
+- Admin UI toggle on/off, user banner, disabled create controls, and mobile rendering.
+- Scheduled-window start/stop/cancel/delete guards and audit logging.
 
 ### Recommended Viewports for Responsive Testing
 ```
