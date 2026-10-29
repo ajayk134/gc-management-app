@@ -16,3 +16,6 @@ tests/*
 !tests/downtime-e2e.js
 !tests/downtime-scheduler-test.js
 !tests/downtime-restart-test.js
+!tests/payment-summary-unit-test.js
+!tests/payment-summary-api-test.js
+!tests/payment-summary-e2e.js

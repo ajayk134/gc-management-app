@@ -40,8 +40,9 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 - **Exports** — Download GC records as CSV or Excel (.xlsx), respecting current filters.
 
 ### User
-- **Dashboard** — Personal statistics (total cards, total amount, paid, pending, paid back).
-- **Records** — Submit new GC records, edit, delete, and view own records. Searchable with status and date filters.
+- **Dashboard** — Personal statistics (total records, total GC amount, total paid, total paid back, pending records/amounts).
+- **Payment summary** — Paid-back history grouped by the recorded `paidBackAt` date, with per-day record counts and totals, date-range/search/sort filters, expandable daily groups, daily/weekly/monthly trend summaries, pending-payment visibility, and recent activity. Dates use the browser's local time zone; only recorded payment dates are shown and no future payment dates are estimated.
+- **Records** — Submit new GC records, edit, delete, and view own records. Searchable with status and date filters, plus sorting by submission date, GC amount, or paid-back date.
 - **No payment actions** — Users cannot mark records as paid; only Admin can.
 - **Downtime notices** — A maintenance ribbon shows the current state or upcoming date/time. During maintenance, users can still sign in and view existing records, while new gift card submissions are disabled in the UI and blocked by the API.
 
@@ -446,6 +447,17 @@ Tests are split into unit, API integration, and Playwright end-to-end coverage f
 ```bash
 # Unit tests (no server or database required)
 npm run test:downtime:unit
+npm run test:payments:unit
+
+# Payment summary integration tests (against a running server + isolated test DB)
+TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \
+TEST_USER_EMAIL=... TEST_USER_PASSWORD=... \
+API_BASE=http://localhost:5001 npm run test:payments:api
+
+# Payment summary Playwright end-to-end tests
+TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \
+TEST_USER_EMAIL=... TEST_USER_PASSWORD=... \
+UI_BASE=http://localhost:5001 npm run test:payments:e2e
 
 # Scheduler/restart tests (require MONGODB_URI; use isolated test databases)
 MONGODB_URI=... npm run test:downtime:scheduler
@@ -461,6 +473,12 @@ TEST_ADMIN_EMAIL=... TEST_ADMIN_PASSWORD=... \
 TEST_USER_EMAIL=... TEST_USER_PASSWORD=... \
 UI_BASE=http://localhost:5001 npm run test:downtime:e2e
 ```
+
+### Payment Summary Coverage
+- Date grouping, per-day record counts and paid-back totals, effective (adjusted) paid amounts, empty and large datasets.
+- Time-zone boundary grouping, missing/invalid payment dates, inclusive date-range filters, search, sorting, and pending summaries.
+- All-time summary parity with `/api/stats/user`, strict user-level isolation, admin/unauthorized access rejection, and no PIN exposure.
+- Desktop and mobile dashboard rendering, expandable day groups, trend granularities, and unchanged admin dashboard.
 
 ### Downtime Coverage
 - Time-window, countdown, indefinite-maintenance, and validation logic (unit).

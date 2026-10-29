@@ -7,6 +7,7 @@ import { useDowntime } from '../context/DowntimeContext';
 import api from '../utils/api';
 import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../utils/format';
 import PaidAmount from '../components/PaidAmount';
+import PaymentSummary from '../components/PaymentSummary';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -22,6 +23,7 @@ export default function UserDashboard() {
   const [statusFilter, setStatusFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [providers, setProviders] = useState([]);
@@ -42,6 +44,9 @@ export default function UserDashboard() {
       if (statusFilter) params.set('status', statusFilter);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
+      const [sortField, sortOrder] = sort.split(':');
+      params.set('sort', sortField);
+      params.set('order', sortOrder);
       params.set('page', page);
       params.set('limit', '20');
 
@@ -58,7 +63,7 @@ export default function UserDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, startDate, endDate, page]);
+  }, [search, statusFilter, startDate, endDate, sort, page]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -128,6 +133,7 @@ export default function UserDashboard() {
     setStatusFilter('');
     setStartDate('');
     setEndDate('');
+    setSort('createdAt:desc');
     setPage(1);
   };
 
@@ -154,7 +160,7 @@ export default function UserDashboard() {
         <div className="stats-grid">
           <div className="stat-card stat-card-records">
             <div className="stat-card-head">
-              <div className="stat-label">Total Cards</div>
+              <div className="stat-label">Total Records</div>
               <span className="stat-card-icon" aria-hidden="true"><CreditCard size={16} /></span>
             </div>
             <div className="stat-value">{stats.totalRecords || 0}</div>
@@ -182,19 +188,21 @@ export default function UserDashboard() {
           </div>
           <div className="stat-card stat-card-paidback">
             <div className="stat-card-head">
-              <div className="stat-label">Paid Back Amount</div>
+              <div className="stat-label">Total Paid Back</div>
               <span className="stat-card-icon" aria-hidden="true"><Banknote size={16} /></span>
             </div>
             <div className="stat-value text-success">{formatCurrency(stats.paidBackAmount)}</div>
           </div>
           <div className="stat-card stat-card-pending">
             <div className="stat-card-head">
-              <div className="stat-label">Pending Cards</div>
+              <div className="stat-label">Pending Records</div>
               <span className="stat-card-icon" aria-hidden="true"><Hourglass size={16} /></span>
             </div>
             <div className="stat-value text-warning">{stats.pendingCount || 0}</div>
           </div>
         </div>
+
+        <PaymentSummary />
 
         <div className="section-header">
           <h2 className="section-title">My Gift Cards</h2>
@@ -231,6 +239,17 @@ export default function UserDashboard() {
             <div className="filter-group">
               <label className="form-label">To</label>
               <input type="date" className="form-input form-input-date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
+            </div>
+            <div className="filter-group">
+              <label className="form-label">Sort</label>
+              <select className="form-select" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
+                <option value="createdAt:desc">Newest submitted</option>
+                <option value="createdAt:asc">Oldest submitted</option>
+                <option value="giftCardAmount:desc">GC amount: high to low</option>
+                <option value="giftCardAmount:asc">GC amount: low to high</option>
+                <option value="paidBackAt:desc">Recently paid back</option>
+                <option value="paidBackAt:asc">Paid back: oldest first</option>
+              </select>
             </div>
             <button className="btn btn-outline btn-sm" onClick={resetFilters}>Clear</button>
           </div>

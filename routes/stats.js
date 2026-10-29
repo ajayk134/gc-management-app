@@ -4,6 +4,7 @@ const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
 const { auth, adminOnly, userOnly } = require('../middleware/auth');
 const { effectivePaidExpr } = require('../utils/effectivePaid');
+const { buildPaymentSummary } = require('../utils/paymentSummary');
 
 const router = express.Router();
 
@@ -48,6 +49,40 @@ router.get('/user', userOnly, async (req, res) => {
     res.json(s);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// User payment summary grouped by recorded payment-back date.
+// Only the authenticated user's own records are read; PINs are never selected.
+router.get('/user/payments', userOnly, async (req, res) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      search = '',
+      sort = 'date-desc',
+      timeZone = 'UTC'
+    } = req.query;
+
+    const records = await GCRecord.find({ user: req.userId })
+      .select('giftCard provider giftCardAmount paid adjustedAmount paymentStatus paidBackAt notes adminNote createdAt updatedAt')
+      .lean();
+
+    const summary = buildPaymentSummary(records, {
+      timeZone,
+      startDate,
+      endDate,
+      search,
+      sort
+    });
+
+    res.json(summary);
+  } catch (error) {
+    if (error.code === 'INVALID_TIME_ZONE' || error.code === 'INVALID_DATE') {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('User payment summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch payment summary' });
   }
 });
 

@@ -24,6 +24,20 @@ export const formatDateTime = (date) => {
   return `${pad2(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${hours}:${minutes} ${ampm}`;
 };
 
+export const formatDateKey = (key) => {
+  if (typeof key !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return key || '-';
+  const [year, month, day] = key.split('-');
+  const monthName = MONTHS[parseInt(month, 10) - 1] || month;
+  return `${day} ${monthName} ${year}`;
+};
+
+export const formatMonthKey = (key) => {
+  if (typeof key !== 'string' || !/^\d{4}-\d{2}$/.test(key)) return key || '-';
+  const [year, month] = key.split('-');
+  const monthName = MONTHS[parseInt(month, 10) - 1] || month;
+  return `${monthName} ${year}`;
+};
+
 export const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
