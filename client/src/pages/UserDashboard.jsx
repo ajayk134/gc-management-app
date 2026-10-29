@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass, ChevronDown, ChevronUp } from 'lucide-react';
+import { CreditCard, Wallet, Receipt, Clock, Banknote, Hourglass } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import DowntimeRibbon from '../components/DowntimeRibbon';
@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, getStatusColor, getStatusLabel } from '../u
 import PaidAmount from '../components/PaidAmount';
 import PaymentSummary from '../components/PaymentSummary';
 import ListLimitSelect from '../components/ListLimitSelect';
+import SectionToggle from '../components/SectionToggle';
 import useModalScrollLock from '../hooks/useModalScrollLock';
 import toast from 'react-hot-toast';
 
@@ -174,6 +175,161 @@ export default function UserDashboard() {
           </button>
         </div>
 
+        <section className="records-section" aria-labelledby="my-gift-cards-title">
+          <div className="section-header dashboard-section-header">
+            <div className="section-title-row">
+              <h2 className="section-title records-title" id="my-gift-cards-title">My Gift Cards</h2>
+              <span className="section-count-badge">{pagination.total} record{pagination.total === 1 ? '' : 's'}</span>
+            </div>
+            <SectionToggle
+              expanded={recordsOpen}
+              onClick={() => setRecordsOpen(open => !open)}
+              controls="my-gift-cards-panel"
+              label="My Gift Cards"
+            />
+          </div>
+
+          {recordsOpen && (
+            <div id="my-gift-cards-panel" className="records-panel">
+              <div className="filter-bar user-filter-bar">
+                <div className="search-input">
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Search gift card, notes..."
+                    aria-label="Search gift cards"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                  />
+                </div>
+                <div className="filter-group">
+                  <label className="form-label" htmlFor="my-gift-cards-status">Status</label>
+                  <select id="my-gift-cards-status" className="form-select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+                    <option value="">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid_back">Paid Back</option>
+                  </select>
+                </div>
+                <div className="filter-group">
+                  <label className="form-label" htmlFor="my-gift-cards-sort">Sort</label>
+                  <select id="my-gift-cards-sort" className="form-select" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
+                    <option value="createdAt:desc">Newest submitted</option>
+                    <option value="createdAt:asc">Oldest submitted</option>
+                    <option value="giftCardAmount:desc">GC amount: high to low</option>
+                    <option value="giftCardAmount:asc">GC amount: low to high</option>
+                    <option value="paidBackAt:desc">Recently paid back</option>
+                    <option value="paidBackAt:asc">Paid back: oldest first</option>
+                  </select>
+                </div>
+                <div className="filter-group">
+                  <label className="form-label" htmlFor="my-gift-cards-from">From</label>
+                  <input id="my-gift-cards-from" type="date" className="form-input form-input-date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
+                </div>
+                <div className="filter-group">
+                  <label className="form-label" htmlFor="my-gift-cards-to">To</label>
+                  <input id="my-gift-cards-to" type="date" className="form-input form-input-date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
+                </div>
+                <ListLimitSelect
+                  id="my-gift-cards-limit"
+                  label="Show"
+                  value={listLimit}
+                  onChange={(value) => { setListLimit(value); setPage(1); }}
+                />
+                <button className="btn btn-outline btn-sm filter-clear-btn" onClick={resetFilters}>Clear</button>
+              </div>
+
+              {records.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon" aria-hidden="true"><CreditCard size={28} /></div>
+                  <div className="empty-state-text">No records found</div>
+                  <p className="text-muted empty-state-hint">Add your first gift card record</p>
+                </div>
+              ) : (
+                <>
+                  <p className="results-count" role="status">Showing <strong>{records.length}</strong> of <strong>{pagination.total}</strong> record(s)</p>
+                  <div className="table-container">
+                    <table className="table user-records-table">
+                      <thead>
+                        <tr>
+                          <th>Gift Card</th>
+                          <th>Provider</th>
+                          <th>Amount</th>
+                          <th>Paid</th>
+                          <th>Status</th>
+                          <th>Submitted</th>
+                          <th>Paid Back</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {records.map(r => (
+                          <tr key={r._id}>
+                            <td>
+                              <strong>{r.giftCard}</strong>
+                              {r.shared && <span className="badge badge-shared">Shared</span>}
+                            </td>
+                            <td>{r.provider || '—'}</td>
+                            <td>{formatCurrency(r.giftCardAmount)}</td>
+                            <td>
+                              <PaidAmount record={r} />
+                            </td>
+                            <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
+                            <td>{formatDate(r.createdAt)}</td>
+                            <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
+                            <td>
+                              <div className="action-buttons">
+                                <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
+                                <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mobile-view">
+                    {records.map(r => (
+                      <div key={r._id} className="mobile-record">
+                        <div className="mobile-record-header">
+                          <div>
+                            <div className="mobile-record-gc">
+                              {r.giftCard}
+                              {r.shared && <span className="badge badge-shared">Shared</span>}
+                            </div>
+                            <div className="text-muted text-xs">PIN: {r.giftCardPin}</div>
+                          </div>
+                          <span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span>
+                        </div>
+                        <div className="mobile-record-details">
+                          <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
+                          <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
+                          <div className="paid-mobile-cell"><PaidAmount record={r} /></div>
+                          <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
+                          <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
+                        </div>
+                        {r.notes && <div className="mobile-record-note">Note: {r.notes}</div>}
+                        <div className="mobile-record-actions">
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
+                          <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {pagination.pages > 1 && (
+                    <div className="pagination">
+                      <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
+                      <span className="pagination-info">Page {page} of {pagination.pages}</span>
+                      <button disabled={page === pagination.pages} onClick={() => setPage(p => p + 1)}>Next</button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </section>
+
         <div className="stats-grid">
           <div className="stat-card stat-card-records">
             <div className="stat-card-head">
@@ -221,159 +377,6 @@ export default function UserDashboard() {
 
         <PaymentSummary />
 
-        <div className="section-header dashboard-section-header">
-          <div className="section-title-row">
-            <h2 className="section-title">My Gift Cards</h2>
-            <span className="section-count-badge">{pagination.total} record{pagination.total === 1 ? '' : 's'}</span>
-          </div>
-          <button
-            type="button"
-            className="section-collapse-btn"
-            aria-expanded={recordsOpen}
-            aria-controls="my-gift-cards-panel"
-            aria-label={`${recordsOpen ? 'Collapse' : 'Expand'} My Gift Cards`}
-            onClick={() => setRecordsOpen(open => !open)}
-          >
-            {recordsOpen ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-            <span>{recordsOpen ? 'Collapse' : 'Expand'}</span>
-          </button>
-        </div>
-
-        {recordsOpen && (
-        <div id="my-gift-cards-panel">
-        <div className="filter-bar">
-            <div className="search-input">
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search gift card, notes..."
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              />
-            </div>
-            <select className="form-select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="paid_back">Paid Back</option>
-            </select>
-            <div className="filter-group">
-              <label className="form-label">From</label>
-              <input type="date" className="form-input form-input-date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }} />
-            </div>
-            <div className="filter-group">
-              <label className="form-label">To</label>
-              <input type="date" className="form-input form-input-date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }} />
-            </div>
-            <div className="filter-group">
-              <label className="form-label">Sort</label>
-              <select className="form-select" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
-                <option value="createdAt:desc">Newest submitted</option>
-                <option value="createdAt:asc">Oldest submitted</option>
-                <option value="giftCardAmount:desc">GC amount: high to low</option>
-                <option value="giftCardAmount:asc">GC amount: low to high</option>
-                <option value="paidBackAt:desc">Recently paid back</option>
-                <option value="paidBackAt:asc">Paid back: oldest first</option>
-              </select>
-            </div>
-            <ListLimitSelect
-              id="my-gift-cards-limit"
-              label="Show"
-              value={listLimit}
-              onChange={(value) => { setListLimit(value); setPage(1); }}
-            />
-            <button className="btn btn-outline btn-sm" onClick={resetFilters}>Clear</button>
-          </div>
-
-          {records.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">📋</div>
-              <div className="empty-state-text">No records found</div>
-              <p className="text-muted" style={{ fontSize: '0.8125rem' }}>Add your first gift card record</p>
-            </div>
-          ) : (
-            <>
-              <p className="results-count" role="status">Showing <strong>{records.length}</strong> of <strong>{pagination.total}</strong> record(s)</p>
-              <div className="table-container">
-                <table className="table user-records-table">
-                  <thead>
-                    <tr>
-                      <th>Gift Card</th>
-                      <th>Provider</th>
-                      <th>Amount</th>
-                      <th>Paid</th>
-                      <th>Status</th>
-                      <th>Submitted</th>
-                      <th>Paid Back</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {records.map(r => (
-                      <tr key={r._id}>
-                        <td>
-                          <strong>{r.giftCard}</strong>
-                          {r.shared && <span className="badge badge-shared">Shared</span>}
-                        </td>
-                        <td>{r.provider || '—'}</td>
-                        <td>{formatCurrency(r.giftCardAmount)}</td>
-                        <td>
-                          <PaidAmount record={r} />
-                        </td>
-                        <td><span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span></td>
-                        <td>{formatDate(r.createdAt)}</td>
-                        <td>{r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</td>
-                        <td>
-                          <div className="action-buttons">
-                            <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
-                            <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Del</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mobile-view">
-                {records.map(r => (
-                  <div key={r._id} className="mobile-record">
-                    <div className="mobile-record-header">
-                      <div>
-                        <div className="mobile-record-gc">
-                          {r.giftCard}
-                          {r.shared && <span className="badge badge-shared">Shared</span>}
-                        </div>
-                        <div className="text-muted text-xs">PIN: {r.giftCardPin}</div>
-                      </div>
-                      <span className={`badge ${getStatusColor(r.paymentStatus)}`}>{getStatusLabel(r.paymentStatus)}</span>
-                    </div>
-                    <div className="mobile-record-details">
-                      <div><span className="text-muted">Provider:</span> {r.provider || '—'}</div>
-                      <div><span className="text-muted">Amount:</span> {formatCurrency(r.giftCardAmount)}</div>
-                      <div className="paid-mobile-cell"><PaidAmount record={r} /></div>
-                      <div><span className="text-muted">Submitted:</span> {formatDate(r.createdAt)}</div>
-                      <div><span className="text-muted">Paid Back:</span> {r.paidBackAt ? formatDate(r.paidBackAt) : '—'}</div>
-                    </div>
-                    {r.notes && <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--gray-600)' }}>Note: {r.notes}</div>}
-                    <div className="mobile-record-actions">
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => handleEdit(r)}>Edit</button>
-                      <button type="button" className="btn btn-danger-outline btn-sm" onClick={() => handleDelete(r._id)}>Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {pagination.pages > 1 && (
-                <div className="pagination">
-                  <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-                  <span className="pagination-info">Page {page} of {pagination.pages}</span>
-                  <button disabled={page === pagination.pages} onClick={() => setPage(p => p + 1)}>Next</button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-        )}
       </div>
 
       {showForm && (

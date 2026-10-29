@@ -57,6 +57,26 @@ async function openSection(scope, name) {
       await page.getByRole('button', { name: 'Cancel' }).click();
     });
 
+    await test('dashboard order puts My Gift Cards directly below the header actions', async () => {
+      const addBox = await page.getByRole('button', { name: '+ Add Record' }).first().boundingBox();
+      const recordsBox = await page.locator('.records-section').boundingBox();
+      const statsBox = await page.locator('.stats-grid').boundingBox();
+      const summaryBox = await page.locator('.payment-summary').boundingBox();
+      assert.ok(addBox.y < recordsBox.y, 'Add Record should stay above the dashboard sections');
+      assert.ok(recordsBox.y < statsBox.y, 'My Gift Cards should come before the stats grid');
+      assert.ok(statsBox.y < summaryBox.y, 'Payment Summary should follow the stats grid');
+    });
+
+    await test('section controls are icon-only chevrons with accessible labels', async () => {
+      const toggle = page.locator('.records-section .section-collapse-btn');
+      assert.equal((await toggle.innerText()).trim(), '', 'section toggle should not render text labels');
+      assert.equal(await toggle.getAttribute('aria-label'), 'Expand My Gift Cards');
+      assert.equal(await toggle.locator('svg').count(), 1, 'section toggle should render a chevron icon');
+      const panelToggle = page.locator('.payment-summary .section-collapse-btn').first();
+      assert.equal((await panelToggle.innerText()).trim(), '', 'payment panel toggles should not render text labels');
+      assert.equal(await panelToggle.locator('svg').count(), 1);
+    });
+
     await test('user dashboard shows the payment summary with recorded totals', async () => {
       await page.getByRole('heading', { name: 'Payment Summary' }).waitFor({ timeout: 15000 });
       const summary = page.locator('.payment-summary');
@@ -160,6 +180,40 @@ async function openSection(scope, name) {
       const overflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       assert.ok(overflow <= 1, `page should not overflow horizontally (overflow ${overflow}px)`);
       await mobile.close();
+    });
+
+    await test('mobile dashboard stays compact and ordered at 320, 375, and 430px', async () => {
+      for (const width of [320, 375, 430]) {
+        const context = await browser.newContext({ viewport: { width, height: 900 } });
+        const mobilePage = await context.newPage();
+        try {
+          await login(mobilePage, USER);
+          await mobilePage.getByRole('heading', { name: 'My Dashboard' }).waitFor({ timeout: 15000 });
+
+          const recordsBox = await mobilePage.locator('.records-section').boundingBox();
+          const statsBox = await mobilePage.locator('.stats-grid').boundingBox();
+          const summaryBox = await mobilePage.locator('.payment-summary').boundingBox();
+          assert.ok(recordsBox.y < statsBox.y, `${width}px: My Gift Cards should come first`);
+          assert.ok(statsBox.y < summaryBox.y, `${width}px: Payment Summary should follow stats`);
+
+          await mobilePage.getByRole('button', { name: 'Expand My Gift Cards' }).click();
+          await mobilePage.locator('#my-gift-cards-panel').waitFor({ timeout: 15000 });
+
+          const filterBar = await mobilePage.locator('.payment-filter-bar').boundingBox();
+          const searchGroup = await mobilePage.locator('.payment-filter-bar .payment-search-group').boundingBox();
+          assert.ok(searchGroup.height < 100, `${width}px: payment search should not stretch vertically (${searchGroup.height}px)`);
+          assert.ok(filterBar.height < 320, `${width}px: payment filters should stay compact (${filterBar.height}px)`);
+
+          const toggle = mobilePage.locator('.records-section .section-collapse-btn');
+          assert.equal((await toggle.innerText()).trim(), '');
+          assert.equal(await toggle.getAttribute('aria-label'), 'Collapse My Gift Cards');
+
+          const overflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+          assert.ok(overflow <= 1, `${width}px: page should not overflow horizontally (overflow ${overflow}px)`);
+        } finally {
+          await context.close();
+        }
+      }
     });
 
     const adminContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });

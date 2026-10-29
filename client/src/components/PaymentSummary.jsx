@@ -4,7 +4,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Clock,
   CreditCard,
   Hourglass,
@@ -18,6 +17,7 @@ import {
   formatMonthKey
 } from '../utils/format';
 import ListLimitSelect from './ListLimitSelect';
+import SectionToggle from './SectionToggle';
 import { limitItems } from '../utils/listLimits';
 
 const EMPTY_FILTERS = { startDate: '', endDate: '', search: '', sort: 'date-desc' };
@@ -69,22 +69,6 @@ function buildSeries(groups, granularity, limit) {
 
 function groupLabel(group) {
   return group.key === 'unknown' ? 'Date not recorded' : formatDateKey(group.key);
-}
-
-function CollapseButton({ expanded, onClick, controls, label }) {
-  return (
-    <button
-      type="button"
-      className="section-collapse-btn"
-      aria-expanded={expanded}
-      aria-controls={controls}
-      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label}`}
-      onClick={onClick}
-    >
-      {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-      <span>{expanded ? 'Collapse' : 'Expand'}</span>
-    </button>
-  );
 }
 
 function PaymentRecordRow({ record }) {
@@ -280,7 +264,7 @@ export default function PaymentSummary() {
             onChange={event => updateFilter('endDate', event.target.value)}
           />
         </div>
-        <div className="filter-group">
+        <div className="filter-group payment-sort-group">
           <label className="form-label" htmlFor="payment-sort">Sort groups</label>
           <select
             id="payment-sort"
@@ -291,7 +275,7 @@ export default function PaymentSummary() {
             {SORT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </div>
-        <button type="button" className="btn btn-outline btn-sm" onClick={clearFilters} disabled={!hasFilters && filters.sort === 'date-desc'}>
+        <button type="button" className="btn btn-outline btn-sm filter-clear-btn" onClick={clearFilters} disabled={!hasFilters && filters.sort === 'date-desc'}>
           Clear
         </button>
       </div>
@@ -365,7 +349,7 @@ export default function PaymentSummary() {
                     value={limits.trend}
                     onChange={value => updateLimit('trend', value)}
                   />
-                  <CollapseButton
+                  <SectionToggle
                     expanded={sectionsOpen.trend}
                     onClick={() => toggleSection('trend')}
                     controls="payment-trend-panel"
@@ -432,7 +416,7 @@ export default function PaymentSummary() {
                     value={limits.pending}
                     onChange={value => updateLimit('pending', value)}
                   />
-                  <CollapseButton
+                  <SectionToggle
                     expanded={sectionsOpen.pending}
                     onClick={() => toggleSection('pending')}
                     controls="payment-pending-panel"
@@ -493,7 +477,7 @@ export default function PaymentSummary() {
                   value={limits.history}
                   onChange={value => updateLimit('history', value)}
                 />
-                <CollapseButton
+                <SectionToggle
                   expanded={sectionsOpen.history}
                   onClick={() => toggleSection('history')}
                   controls="payment-history-panel"
@@ -567,7 +551,7 @@ export default function PaymentSummary() {
                   value={limits.activity}
                   onChange={value => updateLimit('activity', value)}
                 />
-                <CollapseButton
+                <SectionToggle
                   expanded={sectionsOpen.activity}
                   onClick={() => toggleSection('activity')}
                   controls="payment-activity-panel"
