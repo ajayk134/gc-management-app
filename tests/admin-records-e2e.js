@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const assert = require('assert');
 const fs = require('fs/promises');
+const XLSX = require('xlsx');
 
 const BASE = process.env.UI_BASE || 'http://localhost:5001';
 const API_BASE = process.env.API_BASE || BASE;
@@ -269,6 +270,40 @@ const summaryValue = (page, label) => page.locator('.ar-summary-card', { hasText
       assert.ok(contents.includes(`${tag}-A`));
       assert.ok(!contents.includes(pin));
       assert.ok(!contents.toLowerCase().includes('gift card pin'));
+    });
+
+    await test('Excel export downloads exactly the columns visible in the records table', async () => {
+      await page.getByRole('button', { name: 'Column preferences' }).click();
+      for (const label of ['Provider', 'Paid amount', 'Shared', 'Paid back date']) {
+        await page.locator('.ar-column-menu .ar-check-row', { hasText: label }).locator('input').uncheck();
+      }
+      await page.getByRole('button', { name: 'Column preferences' }).click();
+
+      const downloadPromise = page.waitForEvent('download', { timeout: 20000 });
+      await page.getByRole('button', { name: 'Export records' }).click();
+      await page.getByRole('menuitem', { name: 'Export as Excel' }).click();
+      const download = await downloadPromise;
+      const buffer = await fs.readFile(await download.path());
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const headers = XLSX.utils.sheet_to_json(sheet, { header: 1 })[0];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+
+      assert.deepEqual(headers, [
+        'User', 'Email', 'Gift Card', 'Gift Card Amount', 'Payment Status', 'Submitted At'
+      ]);
+      assert.equal(rows.length, 3);
+      assert.deepEqual(rows.map((row) => row['Gift Card']).sort(), [`${tag}-A`, `${tag}-B`, `${tag}-C`]);
+      assert.ok(rows.every((row) => !('Provider' in row)));
+      assert.ok(rows.every((row) => !('Paid (Original)' in row)));
+      assert.ok(rows.every((row) => !('Adjusted Amount' in row)));
+      assert.ok(rows.every((row) => !('Shared' in row)));
+      assert.ok(rows.every((row) => !('Paid Back At' in row)));
+      assert.ok(rows.every((row) => !('Notes' in row)));
+      assert.ok(!JSON.stringify(rows).includes(pin));
+
+      await page.getByRole('button', { name: 'Column preferences' }).click();
+      await page.getByRole('button', { name: 'Reset columns' }).click();
     });
 
     await desktop.close();

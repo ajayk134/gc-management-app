@@ -5,6 +5,11 @@ const {
   parseGCRecordSort,
   escapeRegex
 } = require('../utils/gcRecordQuery');
+const {
+  parseExportColumns,
+  getExportHeaders,
+  buildExcelRows
+} = require('../utils/exportColumns');
 
 let passed = 0;
 const failures = [];
@@ -175,6 +180,66 @@ const otherId = objectId(2);
 
     assert.deepEqual(recordQuery.parseColumnPrefs('{bad json'), recordQuery.DEFAULT_COLUMNS);
     assert.equal(recordQuery.visibleColumns({ notes: true }).notes, true);
+  });
+
+  await test('visible column keys preserve table order and exclude hidden columns', async () => {
+    const keys = recordQuery.visibleColumnKeys({
+      user: true,
+      provider: false,
+      amount: true,
+      paid: false,
+      status: true,
+      shared: false,
+      submitted: true,
+      paidBack: false,
+      notes: true
+    });
+    assert.deepEqual(keys, ['user', 'amount', 'status', 'submitted', 'notes']);
+    assert.deepEqual(recordQuery.visibleColumnKeys({ notes: true }), [
+      'user', 'provider', 'amount', 'paid', 'status', 'shared', 'submitted', 'paidBack', 'notes'
+    ]);
+  });
+
+  await test('Excel columns follow the selected groups, keep table order, and omit hidden columns', async () => {
+    const record = {
+      giftCard: 'GC-1',
+      giftCardAmount: 500,
+      paid: 350,
+      adjustedAmount: 400,
+      provider: 'Amazon',
+      paymentStatus: 'paid_back',
+      shared: true,
+      createdAt: new Date('2026-01-02T10:00:00.000Z'),
+      paidBackAt: new Date('2026-01-03T10:00:00.000Z'),
+      notes: 'sample note',
+      adminNote: 'admin note',
+      user: { name: 'Test User', email: 'test@example.com' }
+    };
+
+    assert.deepEqual(parseExportColumns('user,provider,notes'), ['user', 'giftCard', 'provider', 'notes']);
+    assert.deepEqual(getExportHeaders('user,provider,notes'), [
+      'User', 'Email', 'Gift Card', 'Provider', 'Notes', 'Admin Note'
+    ]);
+    assert.deepEqual(getExportHeaders(''), ['Gift Card']);
+    assert.deepEqual(getExportHeaders('unknown'), ['Gift Card']);
+
+    const rows = buildExcelRows([record], 'user,provider,notes');
+    assert.deepEqual(Object.keys(rows[0]), ['User', 'Email', 'Gift Card', 'Provider', 'Notes', 'Admin Note']);
+    assert.equal(rows[0].User, 'Test User');
+    assert.equal(rows[0].Email, 'test@example.com');
+    assert.equal(rows[0]['Gift Card'], 'GC-1');
+    assert.equal(rows[0].Provider, 'Amazon');
+    assert.equal(rows[0].Notes, 'sample note');
+    assert.ok(!('Payment Status' in rows[0]));
+    assert.ok(!('Gift Card Amount' in rows[0]));
+  });
+
+  await test('full Excel export keeps all existing columns in table order', async () => {
+    assert.deepEqual(getExportHeaders(), [
+      'User', 'Email', 'Gift Card', 'Provider', 'Gift Card Amount',
+      'Adjusted Amount', 'Paid (Original)', 'Payment Status', 'Shared',
+      'Submitted At', 'Paid Back At', 'Notes', 'Admin Note'
+    ]);
   });
 
   await test('bulk result counts support arrays and numeric skipped values', async () => {

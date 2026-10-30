@@ -262,6 +262,11 @@ export function visibleColumns(prefs = DEFAULT_COLUMNS) {
   }, {});
 }
 
+export function visibleColumnKeys(prefs = DEFAULT_COLUMNS) {
+  const visible = visibleColumns(prefs);
+  return COLUMN_OPTIONS.filter((option) => visible[option.key]).map((option) => option.key);
+}
+
 export function getResultCounts(results = {}) {
   results = results || {};
   const countValue = (value) => {

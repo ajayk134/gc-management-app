@@ -265,22 +265,65 @@ const login = (email, password) => req('POST', '/api/auth/login', { body: { emai
       assert.equal(undo.data.results.skipped.length, 1);
     });
 
+    const XLSX = require('xlsx');
+    const readExcel = async (query) => {
+      const response = await req('GET', `/api/export/excel?${query}`, { user: admin });
+      assert.equal(response.status, 200);
+      const workbook = XLSX.read(response.buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      return {
+        headers: XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || [],
+        rows: XLSX.utils.sheet_to_json(sheet)
+      };
+    };
+
     await test('CSV and Excel exports honor filters and omit PINs', async () => {
       const csv = await req('GET', `/api/export/csv?search=${encodeURIComponent(tag)}`, { user: admin });
       assert.equal(csv.status, 200);
+      assert.ok(csv.text.startsWith('User,Email,Gift Card,Gift Card Amount,Provider'));
+      assert.ok(csv.text.includes('Admin Note'));
       assert.ok(csv.text.includes(`${tag}-A`));
       assert.ok(!csv.text.toLowerCase().includes('gift card pin'));
       assert.ok(!csv.text.includes(pin));
 
-      const excel = await req('GET', `/api/export/excel?search=${encodeURIComponent(tag)}&status=paid_back`, { user: admin });
-      assert.equal(excel.status, 200);
-      const XLSX = require('xlsx');
-      const workbook = XLSX.read(excel.buffer, { type: 'buffer' });
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0]['Gift Card'], `${tag}-C`);
-      assert.ok(!Object.keys(rows[0]).some((key) => /pin/i.test(key)));
-      assert.ok(!JSON.stringify(rows).includes(pin));
+      const excel = await readExcel(`search=${encodeURIComponent(tag)}&status=paid_back`);
+      assert.equal(excel.rows.length, 1);
+      assert.equal(excel.rows[0]['Gift Card'], `${tag}-C`);
+      assert.ok(!Object.keys(excel.rows[0]).some((key) => /pin/i.test(key)));
+      assert.ok(!JSON.stringify(excel.rows).includes(pin));
+    });
+
+    await test('Excel export includes only the requested columns in table order', async () => {
+      const excel = await readExcel(
+        `search=${encodeURIComponent(tag)}&columns=user,provider,amount,status`
+      );
+      assert.deepEqual(excel.headers, [
+        'User', 'Email', 'Gift Card', 'Provider', 'Gift Card Amount', 'Payment Status'
+      ]);
+      assert.equal(excel.rows.length, 4);
+      assert.ok(excel.rows.every((row) => !('Notes' in row)));
+      assert.ok(excel.rows.every((row) => !('Paid (Original)' in row)));
+      assert.ok(!JSON.stringify(excel.rows).includes(pin));
+    });
+
+    await test('Excel export can exclude every optional column and keeps filters and sorting', async () => {
+      const giftCardOnly = await readExcel(
+        `search=${encodeURIComponent(tag)}&columns=&sort=giftCardAmount&order=desc`
+      );
+      assert.deepEqual(giftCardOnly.headers, ['Gift Card']);
+      assert.deepEqual(
+        giftCardOnly.rows.map((row) => row['Gift Card']),
+        [`${tag}-C`, `${tag}-B`, `${tag}-A`, `${tag}-D`]
+      );
+
+      const filtered = await readExcel(
+        `search=${encodeURIComponent(tag)}&status=paid_back&columns=amount,status`
+      );
+      assert.deepEqual(filtered.headers, ['Gift Card', 'Gift Card Amount', 'Payment Status']);
+      assert.equal(filtered.rows.length, 1);
+      assert.equal(filtered.rows[0]['Gift Card'], `${tag}-C`);
+      assert.equal(filtered.rows[0]['Gift Card Amount'], 300);
+      assert.equal(filtered.rows[0]['Payment Status'], 'paid_back');
     });
   } finally {
     for (const id of createdIds) {

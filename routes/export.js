@@ -3,6 +3,7 @@ const GCRecord = require('../models/GCRecord');
 const { auth, adminOnly } = require('../middleware/auth');
 const { hasAdjustment } = require('../utils/effectivePaid');
 const { buildGCRecordFilter, parseGCRecordSort } = require('../utils/gcRecordQuery');
+const { buildExcelRows, getExportHeaders } = require('../utils/exportColumns');
 
 const router = express.Router();
 
@@ -74,24 +75,11 @@ router.get('/excel', async (req, res) => {
       .populate('user', 'name email')
       .sort(sort);
 
-    const data = records.map(r => ({
-      'User': r.user?.name || 'Unknown',
-      'Email': r.user?.email || '',
-      'Gift Card': r.giftCard,
-      'Gift Card Amount': r.giftCardAmount,
-      'Provider': r.provider || '',
-      'Adjusted Amount': hasAdjustment(r) ? r.adjustedAmount : '',
-      'Paid (Original)': r.paid,
-      'Payment Status': r.paymentStatus,
-      'Shared': r.shared ? 'yes' : 'no',
-      'Submitted At': r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN') : '',
-      'Paid Back At': r.paidBackAt ? new Date(r.paidBackAt).toLocaleString('en-IN') : '',
-      'Notes': r.notes || '',
-      'Admin Note': r.adminNote || ''
-    }));
+    const headers = getExportHeaders(req.query.columns);
+    const data = buildExcelRows(records, req.query.columns);
 
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(data);
+    const ws = XLSX.utils.json_to_sheet(data, { header: headers });
     XLSX.utils.book_append_sheet(wb, ws, 'GC Records');
     
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });

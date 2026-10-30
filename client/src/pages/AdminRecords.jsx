@@ -48,6 +48,7 @@ import {
   getResultCounts,
   parseColumnPrefs,
   presetToState,
+  visibleColumnKeys,
   visibleColumns
 } from '../utils/recordQuery.mjs';
 
@@ -514,6 +515,9 @@ export default function AdminRecords() {
     setExporting(format);
     try {
       const params = buildRecordQuery({ search, status, filters, sort, includePaging: false });
+      if (format === 'excel') {
+        params.set('columns', visibleColumnKeys(columns).join(','));
+      }
       const response = await api.downloadFile(`/api/export/${format}?${params.toString()}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
