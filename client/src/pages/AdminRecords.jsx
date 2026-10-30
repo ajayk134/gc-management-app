@@ -944,6 +944,7 @@ export default function AdminRecords() {
                   </th>
                   {columnsVisible.user && <th>User</th>}
                   <SortHeader field="giftCard" label="Gift Card" sort={sort} onSort={handleSort} />
+                  {columnsVisible.pin && <th>Gift Card PIN</th>}
                   {columnsVisible.provider && <SortHeader field="provider" label="Provider" sort={sort} onSort={handleSort} />}
                   {columnsVisible.amount && <SortHeader field="giftCardAmount" label="GC Amount" sort={sort} onSort={handleSort} className="ar-align-right" />}
                   {columnsVisible.paid && <SortHeader field="paid" label="Paid" sort={sort} onSort={handleSort} className="ar-align-right" />}
@@ -977,6 +978,7 @@ export default function AdminRecords() {
                         {record.giftCard}
                       </button>
                     </td>
+                    {columnsVisible.pin && <td className="ar-nowrap ar-pin-cell">{record.giftCardPin || '—'}</td>}
                     {columnsVisible.provider && <td>{record.provider || '—'}</td>}
                     {columnsVisible.amount && <td className="ar-align-right ar-nowrap">{formatCurrency(record.giftCardAmount)}</td>}
                     {columnsVisible.paid && <td className="ar-align-right"><PaidAmount record={record} /></td>}
@@ -1092,6 +1094,9 @@ export default function AdminRecords() {
                 </div>
 
                 <div className="ar-mobile-details">
+                  {columnsVisible.pin && (
+                    <div><span>Gift Card PIN</span><strong className="ar-pin-cell">{record.giftCardPin || '—'}</strong></div>
+                  )}
                   {columnsVisible.provider && (
                     <div><span>Provider</span><strong>{record.provider || '—'}</strong></div>
                   )}

@@ -19,6 +19,12 @@ const EXPORT_COLUMN_GROUPS = [
     ]
   },
   {
+    key: 'pin',
+    columns: [
+      { header: 'Gift Card PIN', value: (record) => record.giftCardPin || '' }
+    ]
+  },
+  {
     key: 'provider',
     columns: [
       { header: 'Provider', value: (record) => record.provider || '' }

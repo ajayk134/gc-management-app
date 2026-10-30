@@ -171,6 +171,7 @@ const otherId = objectId(2);
   await test('column preferences merge safely and fall back on invalid storage', async () => {
     const defaults = recordQuery.parseColumnPrefs(null);
     assert.equal(defaults.user, true);
+    assert.equal(defaults.pin, true);
     assert.equal(defaults.notes, false);
 
     const merged = recordQuery.parseColumnPrefs(JSON.stringify({ notes: true, user: false, hacked: true }));
@@ -194,15 +195,16 @@ const otherId = objectId(2);
       paidBack: false,
       notes: true
     });
-    assert.deepEqual(keys, ['user', 'amount', 'status', 'submitted', 'notes']);
+    assert.deepEqual(keys, ['user', 'pin', 'amount', 'status', 'submitted', 'notes']);
     assert.deepEqual(recordQuery.visibleColumnKeys({ notes: true }), [
-      'user', 'provider', 'amount', 'paid', 'status', 'shared', 'submitted', 'paidBack', 'notes'
+      'user', 'pin', 'provider', 'amount', 'paid', 'status', 'shared', 'submitted', 'paidBack', 'notes'
     ]);
   });
 
   await test('Excel columns follow the selected groups, keep table order, and omit hidden columns', async () => {
     const record = {
       giftCard: 'GC-1',
+      giftCardPin: 'PIN-UNIT-1',
       giftCardAmount: 500,
       paid: 350,
       adjustedAmount: 400,
@@ -232,11 +234,34 @@ const otherId = objectId(2);
     assert.equal(rows[0].Notes, 'sample note');
     assert.ok(!('Payment Status' in rows[0]));
     assert.ok(!('Gift Card Amount' in rows[0]));
+    assert.ok(!('Gift Card PIN' in rows[0]));
+    assert.ok(!JSON.stringify(rows).includes('PIN-UNIT-1'));
+  });
+
+  await test('Excel export includes PIN only when its column is selected and keeps table order', async () => {
+    const record = {
+      giftCard: 'GC-1',
+      giftCardPin: 'PIN-UNIT-1',
+      giftCardAmount: 500,
+      paid: 350,
+      provider: 'Amazon',
+      user: { name: 'Test User', email: 'test@example.com' }
+    };
+
+    assert.deepEqual(parseExportColumns('pin'), ['giftCard', 'pin']);
+    assert.deepEqual(getExportHeaders('user,pin,provider'), [
+      'User', 'Email', 'Gift Card', 'Gift Card PIN', 'Provider'
+    ]);
+    const rows = buildExcelRows([record], 'user,pin,provider');
+    assert.deepEqual(Object.keys(rows[0]), [
+      'User', 'Email', 'Gift Card', 'Gift Card PIN', 'Provider'
+    ]);
+    assert.equal(rows[0]['Gift Card PIN'], 'PIN-UNIT-1');
   });
 
   await test('full Excel export keeps all existing columns in table order', async () => {
     assert.deepEqual(getExportHeaders(), [
-      'User', 'Email', 'Gift Card', 'Provider', 'Gift Card Amount',
+      'User', 'Email', 'Gift Card', 'Gift Card PIN', 'Provider', 'Gift Card Amount',
       'Adjusted Amount', 'Paid (Original)', 'Payment Status', 'Shared',
       'Submitted At', 'Paid Back At', 'Notes', 'Admin Note'
     ]);

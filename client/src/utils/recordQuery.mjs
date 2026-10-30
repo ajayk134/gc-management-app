@@ -37,6 +37,7 @@ export const PRESETS = [
 
 export const COLUMN_OPTIONS = [
   { key: 'user', label: 'User' },
+  { key: 'pin', label: 'Gift Card PIN' },
   { key: 'provider', label: 'Provider' },
   { key: 'amount', label: 'GC amount' },
   { key: 'paid', label: 'Paid amount' },
@@ -49,6 +50,7 @@ export const COLUMN_OPTIONS = [
 
 export const DEFAULT_COLUMNS = Object.freeze({
   user: true,
+  pin: true,
   provider: true,
   amount: true,
   paid: true,

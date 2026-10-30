@@ -90,7 +90,7 @@ export default function RecordDetailDrawer({
               </DetailRow>
             )}
             <DetailRow icon={ShieldCheck} label="PIN">
-              <span className="text-muted">Hidden for security</span>
+              <span className="ar-pin-cell">{record.giftCardPin || '—'}</span>
             </DetailRow>
           </section>
 

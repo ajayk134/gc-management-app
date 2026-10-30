@@ -33,11 +33,11 @@ GC Management App is a Gift Card Management System built with Node.js/Express ba
 
 ### Admin
 - **Dashboard** — Overall statistics with per-user breakdown. Filterable by user and date range.
-- **Records** — View, create, edit, delete, and mark records as paid back. Supports bulk selection and bulk "Mark as Paid Back". Searchable and filterable by status, user, and date range. Undo payment status.
+- **Records** — View, create, edit, delete, and mark records as paid back. Supports bulk selection and bulk "Mark as Paid Back". Searchable and filterable by status, user, and date range. Undo payment status. The admin table includes a configurable Gift Card PIN column.
 - **Users** — Create, edit, disable/enable, reset password, and delete users. Each user card shows their GC statistics.
 - **Downtime** — Start maintenance instantly, or schedule future windows with start/end date-time. Edit/reschedule or cancel scheduled windows, and start or end them manually. While maintenance is active, new gift card submissions are blocked but existing records remain readable. Administrators always retain access.
 - **Audit** — View paginated audit history with action filtering. Sensitive fields (PINs, passwords) are redacted in the UI.
-- **Exports** — Download GC records as CSV or Excel (.xlsx), respecting current filters.
+- **Exports** — Download GC records as CSV or Excel (.xlsx), respecting current filters and visible column preferences. Excel includes the Gift Card PIN column when it is selected; CSV never includes PINs.
 
 ### User
 - **Dashboard** — Personal statistics (total records, total GC amount, total paid, total paid back, pending records/amounts).
@@ -546,7 +546,7 @@ MongoDB Atlas (gc_management database)
 - **Password stripping** — User model `toJSON()` removes password from all responses.
 - **Audit logging** — All significant actions logged with user, target, and metadata.
 - **Sensitive data redaction** — Audit UI filters out PIN/password-like keys from metadata display.
-- **Gift Card PIN handling** — PINs are never exposed in audit log metadata on edits. Audit log records exclude `giftCardPin` from change details.
+- **Gift Card PIN handling** — PINs are returned only to the record owner and to administrators; regular users cannot access another user's PIN or any export endpoint. PINs are never exposed in audit log metadata on edits, and audit log records exclude `giftCardPin` from change details.
 
 ### Security Rules for Developers
 - Never commit `.env`, tokens, API keys, or connection strings.

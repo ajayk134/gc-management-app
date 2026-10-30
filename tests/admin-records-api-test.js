@@ -110,14 +110,39 @@ const login = (email, password) => req('POST', '/api/auth/login', { body: { emai
         pendingCount: 3,
         paidBackCount: 1
       });
+      assert.equal(result.data.records.find((record) => record.giftCard === `${tag}-A`).giftCardPin, pin);
     });
 
-    await test('regular users remain scoped to their own records and receive no summary', async () => {
+    await test('regular users remain scoped to their own records, see only their own PIN, and receive no summary', async () => {
       const result = await req('GET', recordsUrl(`search=${encodeURIComponent(tag)}&limit=all`), { user });
       assert.equal(result.status, 200);
       const cards = result.data.records.map((record) => record.giftCard).sort();
       assert.deepEqual(cards, [`${tag}-A`, `${tag}-B`, `${tag}-C`]);
       assert.equal(result.data.summary, undefined);
+      assert.deepEqual(
+        result.data.records.map((record) => record.giftCardPin).sort(),
+        [pin, `${pin}-B`, `${pin}-C`].sort()
+      );
+      assert.ok(!result.data.records.some((record) => record.giftCard === `${tag}-D`));
+
+      const override = await req('GET', recordsUrl(`search=${encodeURIComponent(tag)}&userId=${admin.id || admin._id}`), { user });
+      assert.equal(override.status, 200);
+      assert.deepEqual(override.data.records.map((record) => record.giftCard).sort(), [`${tag}-A`, `${tag}-B`, `${tag}-C`]);
+      assert.ok(!JSON.stringify(override.data).includes(`${pin}-D`));
+    });
+
+    await test('PIN access by record id is limited to the owner or an admin', async () => {
+      const own = await req('GET', `/api/gc-records/${created.A._id}`, { user });
+      assert.equal(own.status, 200);
+      assert.equal(own.data.record.giftCardPin, pin);
+
+      const other = await req('GET', `/api/gc-records/${created.D._id}`, { user });
+      assert.equal(other.status, 403);
+      assert.ok(!other.text.includes(`${pin}-D`));
+
+      const adminGet = await req('GET', `/api/gc-records/${created.D._id}`, { user: admin });
+      assert.equal(adminGet.status, 200);
+      assert.equal(adminGet.data.record.giftCardPin, `${pin}-D`);
     });
 
     await test('status, amount, user, and shared filters combine correctly', async () => {
@@ -277,7 +302,7 @@ const login = (email, password) => req('POST', '/api/auth/login', { body: { emai
       };
     };
 
-    await test('CSV and Excel exports honor filters and omit PINs', async () => {
+    await test('CSV omits PINs while Excel includes them for authorized admins', async () => {
       const csv = await req('GET', `/api/export/csv?search=${encodeURIComponent(tag)}`, { user: admin });
       assert.equal(csv.status, 200);
       assert.ok(csv.text.startsWith('User,Email,Gift Card,Gift Card Amount,Provider'));
@@ -289,8 +314,26 @@ const login = (email, password) => req('POST', '/api/auth/login', { body: { emai
       const excel = await readExcel(`search=${encodeURIComponent(tag)}&status=paid_back`);
       assert.equal(excel.rows.length, 1);
       assert.equal(excel.rows[0]['Gift Card'], `${tag}-C`);
-      assert.ok(!Object.keys(excel.rows[0]).some((key) => /pin/i.test(key)));
-      assert.ok(!JSON.stringify(excel.rows).includes(pin));
+      assert.equal(excel.rows[0]['Gift Card PIN'], `${pin}-C`);
+      assert.ok(JSON.stringify(excel.rows).includes(`${pin}-C`));
+    });
+
+    await test('Excel export includes PIN only when selected and only for admins', async () => {
+      const excel = await readExcel(`search=${encodeURIComponent(tag)}&columns=pin`);
+      assert.deepEqual(excel.headers, ['Gift Card', 'Gift Card PIN']);
+      assert.equal(excel.rows.length, 4);
+      assert.deepEqual(
+        excel.rows.map((row) => row['Gift Card PIN']).sort(),
+        [pin, `${pin}-B`, `${pin}-C`, `${pin}-D`].sort()
+      );
+
+      const userExport = await req('GET', `/api/export/excel?search=${encodeURIComponent(tag)}&columns=pin`, { user });
+      assert.equal(userExport.status, 403);
+      assert.ok(!userExport.text.includes(pin));
+
+      const anonymousExport = await req('GET', `/api/export/excel?search=${encodeURIComponent(tag)}&columns=pin`);
+      assert.equal(anonymousExport.status, 401);
+      assert.ok(!anonymousExport.text.includes(pin));
     });
 
     await test('Excel export includes only the requested columns in table order', async () => {
@@ -303,6 +346,7 @@ const login = (email, password) => req('POST', '/api/auth/login', { body: { emai
       assert.equal(excel.rows.length, 4);
       assert.ok(excel.rows.every((row) => !('Notes' in row)));
       assert.ok(excel.rows.every((row) => !('Paid (Original)' in row)));
+      assert.ok(excel.rows.every((row) => !('Gift Card PIN' in row)));
       assert.ok(!JSON.stringify(excel.rows).includes(pin));
     });
 

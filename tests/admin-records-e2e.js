@@ -130,6 +130,7 @@ const summaryValue = (page, label) => page.locator('.ar-summary-card', { hasText
       assert.equal(await page.locator('.ar-preset').count(), 4);
       assert.ok(await page.locator('#admin-records-limit').count());
       assert.ok(await page.locator('.ar-table').count());
+      assert.equal(await page.locator('.ar-table th', { hasText: 'Gift Card PIN' }).count(), 1);
     });
 
     await test('Add Record form opens and closes without exposing a stored PIN', async () => {
@@ -147,7 +148,10 @@ const summaryValue = (page, label) => page.locator('.ar-summary-card', { hasText
       assert.equal((await summaryValue(page, 'Pending records').innerText()).trim(), '2');
       assert.equal((await summaryValue(page, 'Paid back records').innerText()).trim(), '1');
       assert.ok((await summaryValue(page, 'Total paid amount').innerText()).includes('460'));
-      assert.ok(!(await page.locator('body').innerText()).includes(pin), 'PIN must not be rendered in the workspace');
+      const workspaceText = await page.locator('body').innerText();
+      assert.ok(workspaceText.includes(`${pin}-A`), 'admin PIN column should render the real PIN');
+      assert.ok(workspaceText.includes(`${pin}-B`), 'admin PIN column should render the real PIN');
+      assert.ok(workspaceText.includes(`${pin}-C`), 'admin PIN column should render the real PIN');
     });
 
     await test('bulk pay and undo handle selected and already-paid records', async () => {
@@ -228,24 +232,35 @@ const summaryValue = (page, label) => page.locator('.ar-summary-card', { hasText
       assert.equal(firstCard, `${tag}-A`);
     });
 
-    await test('column preferences can reveal notes and persist the choice', async () => {
+    await test('column preferences can hide/reveal PIN and notes and persist the choice', async () => {
       await page.getByRole('button', { name: 'Column preferences' }).click();
+      const pinColumn = page.locator('.ar-column-menu .ar-check-row', { hasText: 'Gift Card PIN' }).locator('input');
       const notes = page.locator('.ar-column-menu .ar-check-row', { hasText: 'Notes' }).locator('input');
+      assert.equal(await pinColumn.isChecked(), true);
       assert.equal(await notes.isChecked(), false);
+
+      await pinColumn.uncheck();
+      assert.equal(await page.locator('.ar-table th', { hasText: 'Gift Card PIN' }).count(), 0);
+      await pinColumn.check();
+      assert.equal(await page.locator('.ar-table th', { hasText: 'Gift Card PIN' }).count(), 1);
+
       await notes.check();
       assert.ok(await page.locator('.ar-table th', { hasText: 'Notes' }).count());
       const stored = await page.evaluate(() => localStorage.getItem('gc-admin-records-columns-v1'));
       assert.ok(stored.includes('"notes":true'));
+      assert.ok(stored.includes('"pin":true'));
       await page.getByRole('button', { name: 'Reset columns' }).click();
       assert.equal(await page.locator('.ar-table th', { hasText: 'Notes' }).count(), 0);
+      assert.equal(await page.locator('.ar-table th', { hasText: 'Gift Card PIN' }).count(), 1);
     });
 
-    await test('record detail drawer hides the PIN and offers contextual actions', async () => {
+    await test('record detail drawer shows the PIN to admins and offers contextual actions', async () => {
       await page.locator('.ar-table tbody .ar-record-link').first().click();
       const drawer = page.locator('.ar-drawer');
       await drawer.waitFor({ timeout: 15000 });
-      assert.ok((await drawer.innerText()).includes('Hidden for security'));
-      assert.ok(!(await drawer.innerText()).includes(pin));
+      const drawerText = await drawer.innerText();
+      assert.ok(drawerText.includes(pin));
+      assert.ok(!drawerText.includes('Hidden for security'));
       assert.equal(await drawer.getByRole('button', { name: /^(Edit|Share|Unshare|Mark as paid back|Undo payment)$/ }).count() >= 2, true);
       await drawer.getByRole('button', { name: 'Close record details' }).click();
       assert.equal(await page.locator('.ar-drawer').count(), 0);
@@ -290,17 +305,20 @@ const summaryValue = (page, label) => page.locator('.ar-summary-card', { hasText
       const rows = XLSX.utils.sheet_to_json(sheet);
 
       assert.deepEqual(headers, [
-        'User', 'Email', 'Gift Card', 'Gift Card Amount', 'Payment Status', 'Submitted At'
+        'User', 'Email', 'Gift Card', 'Gift Card PIN', 'Gift Card Amount', 'Payment Status', 'Submitted At'
       ]);
       assert.equal(rows.length, 3);
       assert.deepEqual(rows.map((row) => row['Gift Card']).sort(), [`${tag}-A`, `${tag}-B`, `${tag}-C`]);
+      assert.deepEqual(
+        rows.map((row) => row['Gift Card PIN']).sort(),
+        [`${pin}-A`, `${pin}-B`, `${pin}-C`].sort()
+      );
       assert.ok(rows.every((row) => !('Provider' in row)));
       assert.ok(rows.every((row) => !('Paid (Original)' in row)));
       assert.ok(rows.every((row) => !('Adjusted Amount' in row)));
       assert.ok(rows.every((row) => !('Shared' in row)));
       assert.ok(rows.every((row) => !('Paid Back At' in row)));
       assert.ok(rows.every((row) => !('Notes' in row)));
-      assert.ok(!JSON.stringify(rows).includes(pin));
 
       await page.getByRole('button', { name: 'Column preferences' }).click();
       await page.getByRole('button', { name: 'Reset columns' }).click();
@@ -322,13 +340,19 @@ const summaryValue = (page, label) => page.locator('.ar-summary-card', { hasText
 
       await mobilePage.locator('.ar-filter-button').click();
       await mobilePage.locator('.ar-filter-panel').waitFor({ timeout: 15000 });
+      await mobilePage.waitForTimeout(300);
       const panelBox = await mobilePage.locator('.ar-filter-panel').boundingBox();
-      assert.ok(panelBox.width <= 390);
+      assert.ok(panelBox.width <= 390, `filter panel width ${panelBox.width}px should fit the 390px viewport`);
+      assert.ok(panelBox.x >= 0 && panelBox.x + panelBox.width <= 390.5, `filter panel should stay inside the viewport (x ${panelBox.x}, width ${panelBox.width})`);
       await mobilePage.getByRole('button', { name: 'Cancel' }).click();
+
+      const mobileDetails = await mobilePage.locator('.ar-mobile-details').first().innerText();
+      assert.match(mobileDetails, /gift card pin/i);
+      assert.ok(mobileDetails.includes(pin));
 
       await mobilePage.locator('.ar-mobile-title').first().click();
       await mobilePage.locator('.ar-drawer').waitFor({ timeout: 15000 });
-      assert.ok((await mobilePage.locator('.ar-drawer').innerText()).includes('Hidden for security'));
+      assert.ok((await mobilePage.locator('.ar-drawer').innerText()).includes(pin));
       await mobilePage.getByRole('button', { name: 'Close record details' }).click();
     });
 
