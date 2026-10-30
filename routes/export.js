@@ -2,6 +2,7 @@ const express = require('express');
 const GCRecord = require('../models/GCRecord');
 const { auth, adminOnly } = require('../middleware/auth');
 const { hasAdjustment } = require('../utils/effectivePaid');
+const { buildGCRecordFilter, parseGCRecordSort } = require('../utils/gcRecordQuery');
 
 const router = express.Router();
 
@@ -9,36 +10,14 @@ router.use(auth, adminOnly);
 
 router.get('/csv', async (req, res) => {
   try {
-    const { userId, status, startDate, endDate, userIds, shared } = req.query;
-    
-    const filter = {};
-    
-    if (userIds) {
-      const ids = userIds.split(',').filter(Boolean);
-      if (ids.length > 0) filter.user = { $in: ids };
-    } else if (userId) {
-      filter.user = userId;
-    }
-
-    if (status) filter.paymentStatus = status;
-
-    if (shared === 'shared') {
-      filter.shared = true;
-    } else if (shared === 'unshared') {
-      filter.shared = { $ne: true };
-    }
-
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate + 'T23:59:59.999Z');
-    }
+    const filter = await buildGCRecordFilter(req.query, { role: 'admin' });
+    const sort = parseGCRecordSort(req.query);
 
     const records = await GCRecord.find(filter)
       .populate('user', 'name email')
-      .sort({ createdAt: -1 });
+      .sort(sort);
 
-    const csvHeader = 'User,Email,Gift Card,Gift Card PIN,Gift Card Amount,Provider,Adjusted Amount,Paid (Original),Payment Status,Shared,Submitted At,Paid Back At,Notes,Admin Note\n';
+    const csvHeader = 'User,Email,Gift Card,Gift Card Amount,Provider,Adjusted Amount,Paid (Original),Payment Status,Shared,Submitted At,Paid Back At,Notes,Admin Note\n';
     
     const csvRows = records.map(r => {
       const userName = r.user?.name || 'Unknown';
@@ -58,7 +37,6 @@ router.get('/csv', async (req, res) => {
         escapeCsv(userName),
         escapeCsv(userEmail),
         escapeCsv(r.giftCard),
-        escapeCsv(r.giftCardPin),
         escapeCsv(r.giftCardAmount),
         escapeCsv(r.provider),
         escapeCsv(hasAdjustment(r) ? r.adjustedAmount : ''),
@@ -78,6 +56,9 @@ router.get('/csv', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="gc-records-${new Date().toISOString().split('T')[0]}.csv"`);
     res.send(csv);
   } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('CSV export error:', error);
     res.status(500).json({ error: 'Failed to export CSV' });
   }
@@ -86,40 +67,17 @@ router.get('/csv', async (req, res) => {
 router.get('/excel', async (req, res) => {
   try {
     const XLSX = require('xlsx');
-    const { userId, status, startDate, endDate, userIds, shared } = req.query;
-    
-    const filter = {};
-    
-    if (userIds) {
-      const ids = userIds.split(',').filter(Boolean);
-      if (ids.length > 0) filter.user = { $in: ids };
-    } else if (userId) {
-      filter.user = userId;
-    }
-
-    if (status) filter.paymentStatus = status;
-
-    if (shared === 'shared') {
-      filter.shared = true;
-    } else if (shared === 'unshared') {
-      filter.shared = { $ne: true };
-    }
-
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate + 'T23:59:59.999Z');
-    }
+    const filter = await buildGCRecordFilter(req.query, { role: 'admin' });
+    const sort = parseGCRecordSort(req.query);
 
     const records = await GCRecord.find(filter)
       .populate('user', 'name email')
-      .sort({ createdAt: -1 });
+      .sort(sort);
 
     const data = records.map(r => ({
       'User': r.user?.name || 'Unknown',
       'Email': r.user?.email || '',
       'Gift Card': r.giftCard,
-      'Gift Card PIN': r.giftCardPin,
       'Gift Card Amount': r.giftCardAmount,
       'Provider': r.provider || '',
       'Adjusted Amount': hasAdjustment(r) ? r.adjustedAmount : '',
@@ -142,6 +100,9 @@ router.get('/excel', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="gc-records-${new Date().toISOString().split('T')[0]}.xlsx"`);
     res.send(buf);
   } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('Excel export error:', error);
     res.status(500).json({ error: 'Failed to export Excel' });
   }

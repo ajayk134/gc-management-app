@@ -3,8 +3,9 @@ const GCRecord = require('../models/GCRecord');
 const User = require('../models/User');
 const { auth, adminOnly, blockDuringDowntime } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
-const { effectivePaid } = require('../utils/effectivePaid');
+const { effectivePaid, effectivePaidExpr } = require('../utils/effectivePaid');
 const { parseListLimit, parseListPage } = require('../utils/queryLimit');
+const { buildGCRecordFilter, parseGCRecordSort } = require('../utils/gcRecordQuery');
 
 const router = express.Router();
 
@@ -13,71 +14,55 @@ router.use(auth);
 // Get GC records (admin sees all, user sees own)
 router.get('/', async (req, res) => {
   try {
-    const { search, status, startDate, endDate, sort, order, page = 1, limit = 50, userId, shared } = req.query;
-    
-    const filter = {};
-    
-    if (req.user.role === 'user') {
-      filter.user = req.userId;
-    } else if (userId) {
-      filter.user = userId;
-    }
-
-    if (status) {
-      filter.paymentStatus = status;
-    }
-
-    // Shared filter: "shared" -> only shared=true, "unshared" -> only records
-    // where shared is false or missing (legacy records behave as unshared).
-    // Any other value (including absent/empty) -> no filtering.
-    if (shared === 'shared') {
-      filter.shared = true;
-    } else if (shared === 'unshared') {
-      filter.shared = { $ne: true };
-    }
-
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate + 'T23:59:59.999Z');
-    }
-
-    if (search) {
-      const userIds = await User.find({
-        $or: [
-          { name: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } }
-        ]
-      }).select('_id');
-      filter.$or = [
-        { giftCard: { $regex: search, $options: 'i' } },
-        { provider: { $regex: search, $options: 'i' } },
-        { notes: { $regex: search, $options: 'i' } },
-        { adminNote: { $regex: search, $options: 'i' } }
-      ];
-      if (userIds.length > 0) {
-        filter.$or.push({ user: { $in: userIds.map(u => u._id) } });
-      }
-    }
-
-    const sortField = sort || 'createdAt';
-    const sortOrder = order === 'asc' ? 1 : -1;
+    const { page = 1, limit = 50 } = req.query;
+    const filter = await buildGCRecordFilter(req.query, {
+      role: req.user.role,
+      userId: req.userId
+    });
+    const sort = parseGCRecordSort(req.query);
     const { limit: pageSize, all } = parseListLimit(limit, 50);
     const currentPage = all ? 1 : parseListPage(page);
     const skip = all ? 0 : (currentPage - 1) * pageSize;
 
-    const [records, total] = await Promise.all([
+    const summaryPromise = req.user.role === 'admin'
+      ? GCRecord.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            totalRecords: { $sum: 1 },
+            totalAmount: { $sum: '$giftCardAmount' },
+            totalPaid: { $sum: effectivePaidExpr },
+            pendingAmount: {
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, effectivePaidExpr, 0] }
+            },
+            paidBackAmount: {
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, effectivePaidExpr, 0] }
+            },
+            pendingCount: {
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'pending'] }, 1, 0] }
+            },
+            paidBackCount: {
+              $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid_back'] }, 1, 0] }
+            }
+          }
+        }
+      ])
+      : Promise.resolve([]);
+
+    const [records, total, summaryRows] = await Promise.all([
       GCRecord.find(filter)
         .populate('user', 'name email')
         .populate('adjustedBy', 'name email')
         .populate('sharedBy', 'name email')
-        .sort({ [sortField]: sortOrder })
+        .sort(sort)
         .skip(skip)
         .limit(pageSize),
-      GCRecord.countDocuments(filter)
+      GCRecord.countDocuments(filter),
+      summaryPromise
     ]);
 
-    res.json({
+    const response = {
       records,
       pagination: {
         total,
@@ -86,8 +71,25 @@ router.get('/', async (req, res) => {
         limit: all ? 'all' : pageSize,
         all
       }
-    });
+    };
+
+    if (req.user.role === 'admin') {
+      response.summary = summaryRows[0] || {
+        totalRecords: 0,
+        totalAmount: 0,
+        totalPaid: 0,
+        pendingAmount: 0,
+        paidBackAmount: 0,
+        pendingCount: 0,
+        paidBackCount: 0
+      };
+    }
+
+    res.json(response);
   } catch (error) {
+    if (error.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('Get records error:', error);
     res.status(500).json({ error: 'Failed to fetch records' });
   }

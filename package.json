@@ -19,7 +19,11 @@
     "test": "npm run test:api",
     "test:downtime:scheduler": "node tests/downtime-scheduler-test.js",
     "test:downtime": "npm run test:downtime:unit && npm run test:downtime:scheduler && npm run test:downtime:restart",
-    "test:downtime:restart": "node tests/downtime-restart-test.js"
+    "test:downtime:restart": "node tests/downtime-restart-test.js",
+    "test:records:unit": "node tests/admin-records-unit-test.js",
+    "test:records:api": "node tests/admin-records-api-test.js",
+    "test:records:e2e": "node tests/admin-records-e2e.js",
+    "test:records": "npm run test:records:unit && npm run test:records:api && npm run test:records:e2e"
   },
   "engines": {
     "node": ">=18.0.0"
